@@ -446,6 +446,8 @@ func _on_boss_trigger(kind: String) -> void:
 	boss.hp_changed.connect(hud.set_boss_hp)
 	boss.defeated.connect(_on_boss_defeated)
 	hud.set_boss_hp(boss.hp, boss.get_max_hp())
+	var bname = boss.get("boss_name")
+	hud.set_boss_name(bname if typeof(bname) == TYPE_STRING else stage.get("name", ""))
 	hud.show_message("WARNING" if kind == "main" else "!! UNKNOWN SIGNAL !!")
 	var gen := _generation
 	await get_tree().create_timer(1.4).timeout

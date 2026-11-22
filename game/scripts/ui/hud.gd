@@ -18,6 +18,7 @@ var core := 0.0
 var special_ready := false
 var boss_hp := -1
 var boss_max := 1
+var boss_name := ""
 var loadout := ArmorData.neutral_loadout()
 var player
 
@@ -79,6 +80,12 @@ func set_boss_hp(value: int, maximum: int) -> void:
 
 func hide_boss() -> void:
 	boss_hp = -1
+	boss_name = ""
+	_gauges.queue_redraw()
+
+
+func set_boss_name(text: String) -> void:
+	boss_name = text
 	_gauges.queue_redraw()
 
 
@@ -164,6 +171,9 @@ func _draw_gauges() -> void:
 		var bh := boss_max * 2.0 + 3.0
 		var bo := Vector2(366, 18)
 		_frame(Rect2(bo, Vector2(10, bh + 2)))
+		if boss_name != "":
+			_gauges.draw_string(ThemeDB.fallback_font, Vector2(bo.x - 110, bo.y - 4), boss_name,
+					HORIZONTAL_ALIGNMENT_RIGHT, 120, 8, Color("d7edf3"))
 		for i in boss_max:
 			var y := bo.y + 2.0 + (boss_max - 1 - i) * 2.0
 			_gauges.draw_rect(Rect2(bo.x + 2, y, 6, 1), C_BOSS if i < boss_hp else C_EMPTY)

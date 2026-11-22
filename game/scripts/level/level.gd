@@ -197,6 +197,9 @@ func _build() -> void:
 	body.collision_mask = 0
 	for r in solid_rects:
 		body.add_child(_rect_shape(_px(r)))
+	# Invisible ceiling 5 tiles above the map: full jumps from the top rows still
+	# work, but flight / lifts cannot carry the player off the top of the stage.
+	body.add_child(_rect_shape(Rect2(-TILE, -TILE * 6, (width + 2) * TILE, TILE)))
 	add_child(body)
 
 	for r in _merge_rects("^"):
@@ -459,6 +462,8 @@ func _draw() -> void:
 		for x in width:
 			var c := cell(x, y)
 			var pos := Vector2(x * TILE, y * TILE)
+			if c != "~" and not is_solid(x, y) and _in_water(x, y):
+				draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
 			match c:
 				"#", "e":
 					_draw_solid(x, y, pos)
@@ -504,6 +509,11 @@ func _draw_solid(x: int, y: int, pos: Vector2) -> void:
 		draw_rect(Rect2(pos, Vector2(1, TILE)), C_EDGE.darkened(0.4))
 	if not _looks_solid(x + 1, y):
 		draw_rect(Rect2(pos + Vector2(TILE - 1, 0), Vector2(1, TILE)), C_EDGE.darkened(0.4))
+
+
+## A non-water cell that sits inside a body of water (water above, or on both sides).
+func _in_water(x: int, y: int) -> bool:
+	return cell(x, y - 1) == "~" or (cell(x - 1, y) == "~" and cell(x + 1, y) == "~")
 
 
 func _draw_ice(x: int, y: int, pos: Vector2) -> void:
