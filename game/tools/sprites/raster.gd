@@ -16,6 +16,8 @@ var _lines := {}  # id -> line colour
 var _next_id := 0
 ## Direction *towards* the light (screen space, y down): from the upper front.
 var light := Vector2(0.55, -0.85).normalized()
+## Outer outline takes a deep shade of the colour it wraps (32-bit sprite style).
+var selout := false
 
 
 func _init(width: int, height: int) -> void:
@@ -127,6 +129,33 @@ func limb(a: Vector2, b: Vector2, wa: float, wb: float, ramp: Array, opts := {})
 	poly(pts, ramp, opts)
 
 
+## Hand-drawn pixel grid ("stamp"): rows of palette keys, "." = empty. The grid
+## cell `anchor` lands on `at`. opts:
+##   shear (float): push each row forward by shear * (rows above the anchor) px (lean)
+##   flip (bool): mirror horizontally (around the anchor column)
+##   line (Color or null): inner line colour where the stamp covers earlier parts
+func stamp(grid: Array, pal: Dictionary, at: Vector2, anchor: Vector2i, opts := {}) -> void:
+	var id := _next_id
+	_next_id += 1
+	_lines[id] = opts.get("line", null)
+	var shear: float = opts.get("shear", 0.0)
+	var flip: bool = opts.get("flip", false)
+	var ax := int(round(at.x))
+	var ay := int(round(at.y))
+	for r in grid.size():
+		var row: String = grid[r]
+		var dx := int(round(shear * (anchor.y - r)))
+		for c in row.length():
+			var ch := row[c]
+			if ch == "." or not pal.has(ch):
+				continue
+			var cx := (anchor.x - c) if flip else (c - anchor.x)
+			var x := ax + cx + dx
+			var y := ay + r - anchor.y
+			if x >= 0 and y >= 0 and x < w and y < h:
+				_put(x, y, pal[ch], id)
+
+
 ## Single pixel (eyes, glints).
 func dot(p: Vector2, col: Color) -> void:
 	var x := int(floor(p.x))
@@ -163,11 +192,16 @@ func finish(outline: Color) -> void:
 		for x in w:
 			if ids[y * w + x] >= 0:
 				continue
-			for o in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			for o in [Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1)]:
 				var nx: int = x + o.x
 				var ny: int = y + o.y
 				if nx >= 0 and ny >= 0 and nx < w and ny < h and ids[ny * w + nx] >= 0:
-					out.set_pixel(x, y, outline)
+					var c := outline
+					if selout:
+						# Selective outline: a deep shade of the colour it wraps.
+						c = img.get_pixel(nx, ny).darkened(0.68).lerp(outline, 0.45)
+						c.a = 1.0
+					out.set_pixel(x, y, c)
 					break
 	img = out
 

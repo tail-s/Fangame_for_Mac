@@ -12,6 +12,7 @@ extends Node2D
 
 const ART := "res://art/characters/"
 const FLASH := preload("res://scripts/player/sprite_flash.gdshader")
+const SpriteFx = preload("res://scripts/fx/sprite_fx.gd")
 const C_LV1 := Color("3de0ee")
 const C_LV2 := Color("f0b84a")
 const C_MINT := Color("71dedf")
@@ -25,6 +26,10 @@ const SW_COMBO2 := 2
 const SW_COMBO3 := 3
 const SW_AIR := 4
 const SW_DASH := 5
+## Transition clips and the base animations they lead into.
+const CLIPS := {"run_start": ["run"], "dash_start": ["dash"], "dash_end": ["idle"], "land": ["idle"]}
+## Seconds the warp beam falls before the sprite appears.
+const BEAM_TIME := 0.3
 
 static var _sheets := {}
 
@@ -44,9 +49,18 @@ var _arm_angle := 0.0
 var _mini: Sprite2D
 var _mat: ShaderMaterial
 var _front: Node2D
+var _aura: Sprite2D
+var _fx_clock := 0.0
+var _prev_shoot := 0.0
+var _prev_charge := 0
 var _f := 1
 var _was_floor := true
-var _land_t := 0.0
+var _warp_t := 0.0
+## Set from outside: "warp_in" when a stage starts, "victory" on mission complete.
+var force_anim := "":
+	set(value):
+		force_anim = value
+		_warp_t = 0.0
 
 
 static func sheet(id: String) -> Dictionary:
@@ -82,6 +96,11 @@ func _ready() -> void:
 		var ex: Dictionary = meta.extras.mini
 		_mini = _sprite(_sheet.extras.mini, -Vector2(ex.origin[0], ex.origin[1]))
 		_mini.visible = false
+	_aura = Sprite2D.new()
+	_aura.region_enabled = true
+	_aura.position = Vector2(0, -16)
+	_aura.visible = false
+	add_child(_aura)
 	_front = Node2D.new()
 	_front.draw.connect(_draw_front)
 	add_child(_front)
@@ -106,55 +125,96 @@ func _process(delta: float) -> void:
 		return
 	_f = p.visual_facing()
 	_rig.scale.x = _f
+	var prev := anim
 	_pick(p, delta)
 	_apply()
 	_tint(p)
+	_effects(p, delta, prev)
 	queue_redraw()
 	_front.queue_redraw()
 
 
 func _pick(p, delta: float) -> void:
 	var on_floor: bool = p.is_on_floor()
-	if on_floor and not _was_floor:
-		_land_t = 0.1
+	var landed := on_floor and not _was_floor
 	_was_floor = on_floor
-	_land_t = maxf(_land_t - delta, 0.0)
-	var next := "idle"
+	if force_anim != "":
+		_pick_forced(p, delta, on_floor)
+		return
+	var base := "idle"
 	var special: String = p.special_kind
 	if p.is_hurt():
-		next = "hurt"
+		base = "hurt"
 	elif special in ["overdrive", "nova", "tag_strike"]:
-		next = "rush"
+		base = "rush"
 	elif special == "skybreaker":
-		next = "dive_rise" if p.special_phase == 0 else "dive"
+		base = "dive_rise" if p.special_phase == 0 else "dive"
 	elif p.is_wall_sliding():
-		next = "wall_slide"
+		base = "wall_slide"
 	elif p.air_dashing:
-		next = "air_dash"
+		base = "air_dash"
 	elif p.is_dashing():
-		next = "dash"
+		base = "dash"
 	elif p.flying or _field(p, "hovering", false):
-		next = "fly"
+		base = "fly"
 	elif p.gliding:
-		next = "glide"
+		base = "glide"
 	elif not on_floor:
 		var vy: float = p.velocity.y
 		if _field(p, "wall_lock_timer", 0.0) > 0.0 and vy < 0.0:
-			next = "wall_kick"
+			base = "wall_kick"
 		elif vy < -90.0:
-			next = "jump"
+			base = "jump"
 		elif vy < 70.0:
-			next = "apex"
+			base = "apex"
 		else:
-			next = "fall"
+			base = "fall"
 	elif absf(p.velocity.x) > 1.0:
-		next = "run"
-	elif _land_t > 0.0:
+		base = "run"
+	# 32-bit style transition clips: run / dash start, dash brake, landing.
+	var next := base
+	var anims: Dictionary = _sheet.meta.anims
+	if base == "dash" and not anim in ["dash", "dash_start"] and anims.has("dash_start"):
+		next = "dash_start"
+	elif base == "run" and anim in ["idle", "dash_end"] and anims.has("run_start"):
+		next = "run_start"
+	elif base == "idle" and anim in ["dash", "dash_start"] and on_floor and anims.has("dash_end"):
+		next = "dash_end"
+	elif base == "idle" and landed:
 		next = "land"
+	# Let a transition clip finish while what follows it is what we'd play anyway.
+	if CLIPS.has(anim) and base in CLIPS[anim] and not _anim_done():
+		next = anim
 	if next != anim:
 		_play(next)
 	else:
 		_anim_t += delta
+
+
+## Stage start (beam in, then "warp_in") and mission complete ("victory").
+func _pick_forced(p, delta: float, on_floor: bool) -> void:
+	if force_anim == "warp_in":
+		_warp_t += delta
+		_rig.visible = _warp_t >= BEAM_TIME
+		if _warp_t >= BEAM_TIME and (absf(p.velocity.x) > 1.0 or not on_floor or p.is_hurt()):
+			force_anim = ""
+			_rig.visible = true
+			return
+		if _warp_t < BEAM_TIME:
+			return
+	if anim != force_anim:
+		_play(force_anim)
+	else:
+		_anim_t += delta
+	if force_anim == "warp_in" and _anim_done():
+		force_anim = ""
+
+
+func _anim_done() -> bool:
+	var a: Dictionary = _sheet.meta.anims.get(anim, {})
+	if a.is_empty() or a.loop:
+		return false
+	return _anim_t * float(a.fps) >= a.frames.size()
 
 
 func _play(name: String) -> void:
@@ -235,6 +295,46 @@ func _swing_angle(atk) -> float:
 	return lerpf(-2.1, 1.25, k)
 
 
+## Sprite effects (art/fx): dash smoke, landing dust, wall sparks, muzzle flash,
+## charge aura.
+func _effects(p, delta: float, prev_anim: String) -> void:
+	_fx_clock += delta
+	var on_floor: bool = p.is_on_floor()
+	if anim in ["dash", "dash_start"] and on_floor and _fx_clock >= 0.07:
+		_fx_clock = 0.0
+		_spawn("dash_smoke", Vector2(-9.0 * _f, -6.0), true)
+	elif p.is_wall_sliding() and _fx_clock >= 0.1:
+		_fx_clock = 0.0
+		_spawn("wall_spark", Vector2(-8.0 * _f, -10.0), true)
+	if anim == "land" and prev_anim != "land":
+		_spawn("land_dust", Vector2(0, -5.0), true)
+	if _arm_name == "buster":
+		var st: float = p.shoot_pose_timer
+		if st > _prev_shoot + 0.01:
+			_spawn("muzzle_gold" if _prev_charge == 2 else "muzzle", muzzle(), false, 24.0)
+		_prev_shoot = st
+	var charge: int = p.charge_level()
+	_prev_charge = charge
+	_aura.visible = charge > 0
+	if charge > 0:
+		_aura.texture = SpriteFx.strip("charge_gold" if charge == 2 else "charge")
+		var cw := _aura.texture.get_width() / 4
+		_aura.region_rect = Rect2((int(p.anim_time * 14.0) % 4) * cw, 0, cw, _aura.texture.get_height())
+
+
+func _spawn(name: String, offset: Vector2, world: bool, speed := 18.0) -> void:
+	var fx := SpriteFx.new()
+	fx.setup(name, speed)
+	fx.scale.x = _f
+	if world:
+		fx.top_level = true
+		add_child(fx)
+		fx.global_position = global_position + offset
+	else:
+		fx.position = offset
+		add_child(fx)
+
+
 func _tint(p) -> void:
 	var frame_n := Engine.get_physics_frames()
 	modulate.a = 0.35 if (p.invuln_timer > 0.0 and frame_n % 4 < 2) else 1.0
@@ -288,6 +388,15 @@ func _draw() -> void:
 			var y := -26.0 + i * 6.0
 			var x0 := -_f * (8.0 + (i % 2) * 4.0)
 			draw_line(Vector2(x0, y), Vector2(x0 - _f * (10.0 + i * 2.0), y), Color(c, 0.55 - i * 0.1), 1.0)
+	if force_anim == "warp_in" and _warp_t < BEAM_TIME + 0.12:
+		var c := C_SABLE if character == "sable" else (C_ECHO if character == "echo" else C_LV1)
+		var k := clampf(_warp_t / BEAM_TIME, 0.0, 1.0)
+		var top := -220.0
+		var bottom := lerpf(top, -2.0, k)
+		draw_rect(Rect2(-3, top, 6, bottom - top), Color(c, 0.85))
+		draw_rect(Rect2(-1, top, 2, bottom - top), Color(1, 1, 1, 0.9))
+		if k >= 1.0:
+			draw_rect(Rect2(-8, -3, 16, 3), Color(c, 0.7))
 	if special == "skybreaker" and p.special_phase == 1:
 		draw_rect(Rect2(-5, -62, 10, 40), Color(C_MINT, 0.35))
 	if p.flying or _field(p, "hovering", false):
@@ -295,12 +404,6 @@ func _draw() -> void:
 		for x in [-1.0, 3.0]:
 			var flame := 4.0 + fmod(t * 50.0, 3.0)
 			draw_colored_polygon(PackedVector2Array([_v(x - 2, 0), _v(x + 2, 0), _v(x, flame)]), fc)
-	if p.is_dashing() and p.is_on_floor():
-		for i in 3:
-			var a := 0.5 - i * 0.15
-			draw_circle(_v(-11 - i * 4, -2 - fmod(t * 20.0 + i, 3.0)), 1.6 - i * 0.3, Color(1, 1, 1, a))
-	if p.is_wall_sliding() and frame_n % 6 < 3:
-		draw_rect(Rect2(_v(-7, -4) - Vector2(1, 1), Vector2(2, 2)), C_LV2)
 
 
 ## In front of the sprites: charge aura, saber trails, parry, ECHO form marks.
@@ -326,14 +429,6 @@ func _draw_front() -> void:
 	if charge <= 0:
 		return
 	var cc := C_LV2 if charge == 2 else C_LV1
-	var center := Vector2(0, -16)
-	for i in 6:
-		var ang := t * 9.0 + i * TAU / 6.0
-		var r := 14.0 + sin(t * 30.0 + i) * 2.0
-		var at := center + Vector2(cos(ang), sin(ang) * 1.2) * r
-		_front.draw_line(at, at + Vector2(cos(ang), sin(ang)) * 3.0, cc, 1.0)
-	if charge == 2 and frame_n % 4 < 2:
-		_front.draw_arc(center, 17.0, 0.0, TAU, 20, cc, 1.0)
 	_front.draw_circle(muzzle(), 1.5 + (frame_n % 3) * 0.5, cc)
 
 

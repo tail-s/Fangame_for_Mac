@@ -557,8 +557,16 @@ func load_level() -> void:
 
 	Audio.music(stage.id if Audio.TRACKS.has(stage.id) else "training")
 	_flash_ready()
+	_pose("warp_in")
 	if not level.active_changes.is_empty():
 		hud.toast("▲ 환경 변화\n" + "\n".join(level.active_changes), 3.5)
+
+
+## Plays a one-off pose on the active character's sprite ("warp_in", "victory").
+func _pose(name: String) -> void:
+	var v = player.get("visual") if player != null else null
+	if v != null and "force_anim" in v:
+		v.force_anim = name
 
 
 ## Stage start / respawn banner.
@@ -773,6 +781,7 @@ func _on_goal() -> void:
 func _finish_stage(text: String) -> void:
 	var gen := _generation
 	player.freeze()
+	_pose("victory")
 	hud.show_message(text)
 	Game.mark_cleared(stage.id)
 	Audio.music("stage_clear")

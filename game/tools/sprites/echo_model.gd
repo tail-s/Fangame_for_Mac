@@ -22,6 +22,26 @@ const GUN := Color("3a4466")
 
 const ANGLES := 16
 
+## Hand-drawn head (32-bit style), facing right; anchor = head centre (6, 6).
+##   1-5 teal armour  q purple ear  v w x gold visor  f g h face
+const HEAD := [
+	"....23445....",
+	"..234444455..",
+	".23444444455.",
+	".123444444455",
+	"11vvwwwwwwwwx",
+	"11vwwwwwwwwww",
+	"112qq23ffgggh",
+	"112qq2ffggggh",
+	".1122fffgggh.",
+	".11222ffggh..",
+	"..11122fff...",
+	"....111......",
+]
+const HEAD_PAL := {"1": Color("1e6650"), "2": Color("2f8e78"), "3": Color("4fcf98"), "4": Color("82e6b8"),
+		"5": Color("c8fbe2"), "q": Color("b78af3"), "v": Color("a3681a"), "w": Color("f0b84a"),
+		"x": Color("fff3c4"), "f": Color("6f84a3"), "g": Color("a8bfd6"), "h": Color("d6e4f0")}
+
 var _r: Raster
 var _far := false
 
@@ -43,6 +63,7 @@ func _pts(at: Vector2, angle: float, local: Array, s := 1.0) -> PackedVector2Arr
 
 func draw(r: Raster, j: Dictionary, layer: String, _variant: String) -> void:
 	_r = r
+	_r.selout = true
 	_far = layer.begins_with("far")
 	var s: float = j.scale
 	match layer:
@@ -66,16 +87,8 @@ func _head(j: Dictionary, s: float) -> void:
 	# Twin antennae swept back.
 	_r.limb(c + Vector2(-1.5, -5.0).rotated(a) * s, c + Vector2(-10.0, -9.0).rotated(a) * s, 1.6, 1.0, ramp(ACCENT))
 	_r.limb(c + Vector2(0.8, -5.6).rotated(a) * s, c + Vector2(-7.0, -11.5).rotated(a) * s, 1.6, 1.0, ramp(ACCENT))
-	# Round helmet.
-	_r.ellipse(c, 6.2 * s, 5.9 * s, 0.0, ramp(ARMOR))
-	_r.poly(_pts(c, a, [Vector2(-6.2, 1.0), Vector2(-2.0, 1.0), Vector2(-1.0, 5.4), Vector2(-4.8, 4.4)], s), ramp(PLATE))
-	# Face, wide visor.
-	_r.poly(_pts(c, a, [Vector2(1.2, -0.6), Vector2(6.0, -0.6), Vector2(5.4, 2.8), Vector2(3.0, 4.6),
-			Vector2(1.2, 4.2)], s), ramp(Color("a8bfd6")), {"shade": 0.2})
-	_r.poly(_pts(c, a, [Vector2(-0.4, -2.6), Vector2(6.6, -2.6), Vector2(6.6, -0.2), Vector2(-0.4, -0.2)], s),
-			Raster.ramp_from(VISOR), {"line": false, "shade": 2.0})
-	_r.dot(c + Vector2(5.2, -2.0).rotated(a) * s, VISOR.lightened(0.75))
-	_r.ellipse(c + Vector2(-2.2, 0.8).rotated(a) * s, 1.6 * s, 1.8 * s, 0.0, ramp(ACCENT), {"shade": 0.3})
+	# Hand-drawn round helmet with a wide gold visor and purple ear pieces.
+	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(6, 6), {"line": ARMOR.darkened(0.6)})
 
 
 func _body(j: Dictionary, s: float) -> void:

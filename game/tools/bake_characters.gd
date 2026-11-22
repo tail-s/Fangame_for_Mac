@@ -75,6 +75,7 @@ func _bake(id: String, model) -> void:
 				model.draw(r, joints[fi], layer, v)
 				r.finish(model.OUTLINE)
 				sheet.blit_rect(r.img, Rect2i(Vector2i.ZERO, CELL), Vector2i(fi * CELL.x, vi * CELL.y))
+		_retouch(sheet, dir.path_join("retouch").path_join(layer + ".png"))
 		sheet.save_png(ProjectSettings.globalize_path(dir.path_join(layer + ".png")))
 		sheets[layer] = sheet
 	# Arm sprites drawn on their own (origin = shoulder).
@@ -91,6 +92,7 @@ func _bake(id: String, model) -> void:
 				model.draw_extra(r, ex.name, eorigin, variants[vi], angles[ai])
 				r.finish(model.OUTLINE)
 				sheet.blit_rect(r.img, Rect2i(Vector2i.ZERO, ecell), Vector2i(ai * ecell.x, vi * ecell.y))
+		_retouch(sheet, dir.path_join("retouch").path_join(ex.name + ".png"))
 		sheet.save_png(ProjectSettings.globalize_path(dir.path_join(ex.name + ".png")))
 		extra_imgs[ex.name] = sheet
 		meta.extras[ex.name] = {"cell": [ecell.x, ecell.y], "origin": [eorigin.x, eorigin.y],
@@ -101,6 +103,30 @@ func _bake(id: String, model) -> void:
 	print("%s: %d frames x %d variants, %d layers" % [id, frames.size(), variants.size(), model.LAYERS.size()])
 	if preview_dir != "":
 		_preview(id, model, meta, sheets, extra_imgs)
+
+
+## Hand retouch (X6-style finishing by a pixel artist): every opaque pixel of
+## art/characters/<id>/retouch/<sheet>.png replaces the baked one, pure magenta
+## (#ff00ff) erases it, transparent keeps the baked pixel. The retouch folder has a
+## .gdignore so Godot never imports or ships it; rebakes keep the artist's work.
+func _retouch(sheet: Image, path: String) -> void:
+	var abs_path := ProjectSettings.globalize_path(path)
+	if not FileAccess.file_exists(abs_path):
+		return
+	var t := Image.load_from_file(abs_path)
+	t.convert(Image.FORMAT_RGBA8)
+	var n := 0
+	for y in mini(t.get_height(), sheet.get_height()):
+		for x in mini(t.get_width(), sheet.get_width()):
+			var c := t.get_pixel(x, y)
+			if c.a < 0.5:
+				continue
+			if c.r8 == 255 and c.g8 == 0 and c.b8 == 255:
+				sheet.set_pixel(x, y, Color(0, 0, 0, 0))
+			else:
+				sheet.set_pixel(x, y, Color(c, 1.0))
+			n += 1
+	print("  retouch %s: %d px" % [path.get_file(), n])
 
 
 ## Contact sheets for look-dev: one image per variant, 9 frames per row, enlarged 3x.

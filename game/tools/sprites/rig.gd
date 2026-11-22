@@ -10,14 +10,14 @@ extends RefCounted
 ##   ns ne      near shoulder / elbow bend      fs fe   far arm
 ##   wing       0..1 wing spread (Aero / Ultimate body)
 
-const THIGH := 5.0
-const SHIN := 5.0
+const THIGH := 5.5
+const SHIN := 5.5
 const ANKLE := 5.0   # ankle height above the sole
 const TORSO := 8.5
 const NECK := 4.2
 const UPPER := 4.5
 const FORE := 4.5
-const PELVIS_Y := -15.5
+const PELVIS_Y := -16.5
 
 ## Body scale per character (ECHO is smaller).
 var scale := 1.0

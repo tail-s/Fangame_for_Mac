@@ -22,6 +22,27 @@ const BLADE := Color("c9fbff")
 
 const ANGLES := 16
 
+## Hand-drawn head (32-bit style), facing right; anchor = head centre (6, 6).
+##   1-5 steel  p q s orange  k l m mask / vent  v w x eye slit
+const HEAD := [
+	"......pqs....",
+	"...2344pq45..",
+	"..2344444455.",
+	".123444444455",
+	"1123333333335",
+	"1122222vwwwwx",
+	"112m22kkkkkkl",
+	"112ml2kllllll",
+	"112mm2kllllk.",
+	".11222kkllk..",
+	"..1112kkkk...",
+	"...111.......",
+]
+const HEAD_PAL := {"1": Color("3a4268"), "2": Color("56608a"), "3": Color("7f8ab8"), "4": Color("a3aed6"),
+		"5": Color("d6ddf2"), "p": Color("a8501c"), "q": Color("f08a3a"), "s": Color("ffc28a"),
+		"k": Color("1e2240"), "l": Color("2c3354"), "m": Color("3c4570"),
+		"v": Color("1d8fa0"), "w": Color("3de0ee"), "x": Color("e6ffff")}
+
 var _r: Raster
 var _far := false
 
@@ -43,6 +64,7 @@ func _pts(at: Vector2, angle: float, local: Array, s := 1.0) -> PackedVector2Arr
 
 func draw(r: Raster, j: Dictionary, layer: String, _variant: String) -> void:
 	_r = r
+	_r.selout = true
 	_far = layer.begins_with("far")
 	match layer:
 		"back":
@@ -86,20 +108,8 @@ func _head(j: Dictionary) -> void:
 	# Long swept-back crest (two blades) behind the helmet.
 	_r.poly(_pts(c, a, [Vector2(-1.5, -5.0), Vector2(-13.0, -7.2), Vector2(-10.8, -5.0), Vector2(-3.5, -2.0)]), ramp(ACCENT))
 	_r.poly(_pts(c, a, [Vector2(-3.0, -2.5), Vector2(-11.0, -2.6), Vector2(-9.0, -0.8), Vector2(-4.0, 0.5)]), ramp(ACCENT.darkened(0.15)))
-	# Helmet with a pointed back.
-	_r.poly(_pts(c, a, [Vector2(-5.6, 2.0), Vector2(-7.4, -1.6), Vector2(-4.6, -4.8), Vector2(-0.8, -6.0),
-			Vector2(3.0, -5.4), Vector2(5.4, -3.2), Vector2(6.0, 0.0), Vector2(5.2, 2.6),
-			Vector2(2.8, 4.6), Vector2(-2.0, 4.6)]), ramp(ARMOR))
-	# Mask over the lower face and the eye slit.
-	_r.poly(_pts(c, a, [Vector2(0.8, -0.2), Vector2(6.0, -0.2), Vector2(5.4, 2.6), Vector2(3.0, 4.4),
-			Vector2(0.8, 4.0)]), ramp(MASK), {"shade": 0.2})
-	_r.poly(_pts(c, a, [Vector2(0.8, -2.2), Vector2(6.4, -2.2), Vector2(6.4, -0.6), Vector2(0.8, -0.6)]),
-			Raster.ramp_from(VISOR), {"line": false, "shade": 2.0})
-	_r.dot(c + Vector2(5.2, -1.6).rotated(a), Color("e6ffff"))
-	# Forehead crest stub (orange) and side vent.
-	_r.poly(_pts(c, a, [Vector2(0.0, -5.6), Vector2(3.6, -5.2), Vector2(5.6, -7.6)]), ramp(ACCENT))
-	_r.poly(_pts(c, a, [Vector2(-3.6, 0.0), Vector2(-1.4, 0.0), Vector2(-1.4, 2.0), Vector2(-3.6, 2.0)]),
-			ramp(PLATE), {"shade": 2.0})
+	# Hand-drawn helmet: pointed back, orange crest stub, cyan eye slit, mask.
+	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(6, 6), {"line": ARMOR.darkened(0.6)})
 
 
 func _body(j: Dictionary) -> void:

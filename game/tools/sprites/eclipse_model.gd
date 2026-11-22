@@ -95,6 +95,7 @@ func draw(r: Raster, j: Dictionary, layer: String, variant: String) -> void:
 	_use(variant)
 	for part in PARTS:
 		var sub := Raster.new(r.w, r.h)
+		sub.selout = true
 		_r = sub
 		_far = part.begins_with("far")
 		match part:
