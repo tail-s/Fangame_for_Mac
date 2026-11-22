@@ -11,6 +11,9 @@ const KEYS := {
 	"shoot": [KEY_X, KEY_J],
 	"dash": [KEY_C, KEY_K, KEY_SHIFT],
 	"special": [KEY_V, KEY_L],
+	"weapon_prev": [KEY_Q],
+	"weapon_next": [KEY_E],
+	"tag": [KEY_TAB, KEY_F],
 	"restart": [KEY_R],
 	"pause": [KEY_ESCAPE, KEY_P],
 	"confirm": [KEY_ENTER, KEY_KP_ENTER, KEY_Z, KEY_SPACE],
@@ -26,8 +29,10 @@ const BUTTONS := {
 	"move_down": [JOY_BUTTON_DPAD_DOWN],
 	"jump": [JOY_BUTTON_A],
 	"shoot": [JOY_BUTTON_X],
-	"dash": [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER],
+	"dash": [JOY_BUTTON_B],
 	"special": [JOY_BUTTON_Y],
+	"weapon_prev": [JOY_BUTTON_LEFT_SHOULDER],
+	"weapon_next": [JOY_BUTTON_RIGHT_SHOULDER],
 	"restart": [JOY_BUTTON_BACK],
 	"pause": [JOY_BUTTON_START],
 	"confirm": [JOY_BUTTON_A],
@@ -39,6 +44,7 @@ const AXES := {
 	"move_right": [JOY_AXIS_LEFT_X, 1.0],
 	"move_up": [JOY_AXIS_LEFT_Y, -1.0],
 	"move_down": [JOY_AXIS_LEFT_Y, 1.0],
+	"tag": [JOY_AXIS_TRIGGER_LEFT, 1.0],
 }
 
 

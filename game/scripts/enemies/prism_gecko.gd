@@ -13,6 +13,10 @@ const PrismOrb = preload("res://scripts/combat/prism_orb.gd")
 const EnemyShot = preload("res://scripts/combat/enemy_shot.gd")
 
 const MAX_HP := 32
+## GDD §5-2 weakness loop: Pulse Ring (Pulse Cicada's weapon) beats Prism Gecko.
+const WEAKNESS := "pulse_ring"
+const WEAK_MULT := 2.5
+const STAGGER_COOLDOWN := 2.5
 const HALF := 9.0  # distance from body centre to the surface it clings to
 const GRAVITY := 900.0
 
@@ -41,6 +45,7 @@ var _leap_time := 0.0
 var _decoys: Array = []
 var _rng := RandomNumberGenerator.new()
 var _last_pattern := -1
+var _stagger_cd := 0.0
 
 
 func _ready() -> void:
@@ -65,12 +70,20 @@ func get_contact_damage() -> int:
 
 
 ## Returns true if this hit destroyed the boss (or popped a decoy).
-func take_damage(amount: int) -> bool:
+## The weakness weapon hits harder and interrupts the current pattern, at most
+## once per STAGGER_COOLDOWN (no infinite stun, GDD §5-2).
+func take_damage(amount: int, weapon := "") -> bool:
 	if is_decoy:
 		_pop()
 		return true
 	if state in [S.INTRO, S.DEAD] or _invuln > 0.0:
 		return false
+	if weapon == WEAKNESS:
+		amount = ceili(amount * WEAK_MULT)
+		if _stagger_cd <= 0.0 and state not in [S.DROP, S.IDLE]:
+			_stagger_cd = STAGGER_COOLDOWN
+			_clear_decoys()
+			_begin_drop()
 	hp = maxi(hp - amount, 0)
 	_flash = 0.08
 	_invuln = 0.08
@@ -87,6 +100,7 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	_flash = maxf(_flash - delta, 0.0)
 	_invuln = maxf(_invuln - delta, 0.0)
+	_stagger_cd = maxf(_stagger_cd - delta, 0.0)
 	if is_decoy:
 		queue_redraw()
 		return

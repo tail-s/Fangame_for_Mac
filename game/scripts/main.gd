@@ -17,8 +17,11 @@ const STAGES := [
 	{"id": "training", "name": "TRAINING FACILITY", "desc": "훈련 시설 · 아머 파츠 캡슐 7개",
 			"path": "res://levels/test_stage.txt"},
 	{"id": "prism_gecko", "name": "PRISM GECKO", "desc": "광학 데이터 보관소 · 보스전",
-			"path": "res://levels/prism_gecko.txt"},
+			"path": "res://levels/prism_gecko.txt", "weapon": "refraction_beam"},
 ]
+## Sortie choices (GDD §6 tag battle). Characters are original designs.
+const PARTIES := [["ix", "sable"], ["ix", "echo"], ["sable", "echo"], ["ix"]]
+const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
 const RESPAWN_DELAY := 1.6
 const CLEAR_DELAY := 3.5
 
@@ -60,14 +63,15 @@ func _physics_process(_delta: float) -> void:
 		hud.toggle_debug()
 	if Input.is_action_just_pressed("debug_unlock"):
 		Game.unlock_all()
-		hud.toast("디버그: 모든 아머 파츠 해금")
+		player.weapons = Game.weapons_available()
+		hud.toast("디버그: 모든 아머 파츠·특수무기 해금")
 	if Input.is_action_just_pressed("restart"):
 		Game.clear_checkpoint()
 		load_level()
 		return
 	if at_checkpoint():
 		hud.set_hint("↑  ARMOR LAB")
-		if Input.is_action_just_pressed("move_up"):
+		if Input.is_action_just_pressed("move_up") and not Input.is_action_pressed("shoot"):
 			open_lab()
 	else:
 		hud.set_hint("")
@@ -154,7 +158,30 @@ func _on_select_choice(id: String) -> void:
 		"title":
 			show_title()
 		_:
-			start_stage(id)
+			_show_party_select(id)
+
+
+func _show_party_select(stage_id: String) -> void:
+	var items := []
+	var current := 0
+	for i in PARTIES.size():
+		var ids: Array = PARTIES[i]
+		var names := " + ".join(ids.map(func(c): return Player.CHARACTERS[c].name))
+		items.append({"id": str(i), "text": names, "note": _party_note(ids)})
+		if ids == Game.party():
+			current = i
+	_show_menu("SORTIE", "출격 멤버 선택 — 스테이지 중 Tab 으로 교대", items,
+			"Z 출격   Esc 뒤로", _on_party_choice.bind(stage_id), show_select, false, current)
+
+
+func _on_party_choice(choice: String, stage_id: String) -> void:
+	Game.set_party(PARTIES[int(choice)])
+	start_stage(stage_id)
+
+
+func _party_note(ids: Array) -> String:
+	var roles := {"ix": "버스터·아머·특수무기", "sable": "세이버·패링", "echo": "연사·호버·복제"}
+	return "  /  ".join(ids.map(func(c): return roles[c]))
 
 
 func _on_pause_choice(id: String) -> void:
@@ -169,9 +196,10 @@ func _on_pause_choice(id: String) -> void:
 
 
 func _show_menu(title: String, subtitle: String, items: Array, footer: String,
-		on_choice: Callable, on_cancel: Callable, dim := false) -> void:
+		on_choice: Callable, on_cancel: Callable, dim := false, selected := 0) -> void:
 	_close_menu()
 	_menu = MenuScreen.new()
+	_menu.selected = selected
 	_menu.title = title
 	_menu.subtitle = subtitle
 	_menu.items = items
@@ -233,7 +261,10 @@ func load_level() -> void:
 	player.max_hp = Game.max_hp()
 	player.position = Game.checkpoint if Game.has_checkpoint else level.spawn
 	level.add_child(player)
+	player.setup_party(Game.party(), Game.max_hp())
+	player.weapons = Game.weapons_available()
 	player.apply_loadout(Game.loadout())
+	player.notice.connect(func(text: String) -> void: hud.toast(text, 1.6))
 	player.kill_y = level.pixel_size().y + 48.0
 	player.reset_physics_interpolation()
 	player.hp_changed.connect(hud.set_hp)
@@ -344,6 +375,10 @@ func _on_boss_trigger() -> void:
 
 func _on_boss_defeated() -> void:
 	hud.hide_boss()
+	var weapon: String = stage.get("weapon", "")
+	if weapon != "" and not Game.data["weapons"].has(weapon):
+		Game.unlock_weapon(weapon)
+		hud.toast("특수무기 %s 획득 — IX 로 Q / E 전환" % WeaponShot.INFO[weapon].name, 3.4)
 	_finish_stage("MISSION COMPLETE")
 
 

@@ -7,9 +7,15 @@ var dir := -1
 var _t := 0.0
 
 
+func _init() -> void:
+	copy_kind = "mini"
+
+
 func _physics_process(delta: float) -> void:
 	_t += delta
 	_tick_flash(delta)
+	if _tick_frozen(delta):
+		return
 	_apply_gravity(delta)
 	velocity.x = dir * speed
 	move_and_slide()
@@ -34,3 +40,4 @@ func _draw() -> void:
 		Vector2(-8, -3), Vector2(8, -3), Vector2(6, -10), Vector2(-6, -10)]), shell)
 	draw_rect(Rect2(-5, -10, 10, 1), shell.lightened(0.35))
 	draw_rect(Rect2(dir * 4 - 1.5, -8, 3, 2), Color("e34f5b"))
+	_draw_frozen()

@@ -22,6 +22,9 @@ var loadout := ArmorData.neutral_loadout()
 var player
 
 var _gauges: Control
+var _status: Label
+var _status_text := ""
+var _status_frac := -1.0
 var _msg: Label
 var _toast: Label
 var _hint: Label
@@ -38,11 +41,12 @@ func _ready() -> void:
 	_gauges.draw.connect(_draw_gauges)
 	add_child(_gauges)
 
+	_status = _label(8, Vector2(34, 4), Vector2(220, 12), HORIZONTAL_ALIGNMENT_LEFT)
 	_msg = _label(16, Vector2(0, 84), Vector2(384, 24), HORIZONTAL_ALIGNMENT_CENTER)
 	_toast = _label(9, Vector2(0, 26), Vector2(384, 30), HORIZONTAL_ALIGNMENT_CENTER)
 	_hint = _label(8, Vector2(0, 186), Vector2(384, 12), HORIZONTAL_ALIGNMENT_CENTER)
 	_help = _label(8, Vector2(6, 202), Vector2(372, 12), HORIZONTAL_ALIGNMENT_LEFT)
-	_help.text = "이동 ←→  점프 Z  사격 X(길게=차지)  대시 C  필살기 V  일시정지 Esc"
+	_help.text = "이동 ←→  점프 Z  공격 X  대시 C  특수 V  무기/검술 Q·E  교대 Tab  일시정지 Esc"
 	_debug = _label(8, Vector2(236, 4), Vector2(144, 40), HORIZONTAL_ALIGNMENT_LEFT)
 	_debug.visible = false
 	var tween := create_tween()
@@ -101,6 +105,14 @@ func toggle_debug() -> void:
 
 
 func _process(_delta: float) -> void:
+	if player != null and is_instance_valid(player):
+		var text: String = "%s · %s" % [player.character_name(), player.status_text()]
+		var frac: float = player.status_fraction()
+		if text != _status_text or absf(frac - _status_frac) > 0.001:
+			_status_text = text
+			_status_frac = frac
+			_status.text = text
+			_gauges.queue_redraw()
 	if _debug.visible and player != null and is_instance_valid(player):
 		_debug.text = "%s  v=(%.0f, %.0f)\nmomentum=%s  airdash=%d\ncore=%.0f  wall=%d  FPS %d" % [
 			player.state_name(), player.velocity.x, player.velocity.y,
@@ -129,14 +141,23 @@ func _draw_gauges() -> void:
 		cc = Color.WHITE
 	_gauges.draw_rect(Rect2(core_box.position.x + 1, core_box.end.y - 2 - fill, 3, fill), cc)
 
-	# Equipped part chips: H B A L.
+	# Weapon energy bar under the status line.
+	if _status_frac >= 0.0:
+		_gauges.draw_rect(Rect2(34, 16, 62, 4), C_BG)
+		_gauges.draw_rect(Rect2(35, 17, 60 * _status_frac, 2), C_CORE)
+
+	# Benched partner: small HP bar.
 	var y0 := origin.y + h + 6.0
-	for i in ArmorData.SLOTS.size():
-		var slot: String = ArmorData.SLOTS[i]
-		var c: Color = ArmorData.ARMOR_COLOR[loadout.get(slot, "neutral")]
-		_gauges.draw_rect(Rect2(origin.x + (i % 2) * 9, y0 + (i / 2) * 9, 8, 8), c)
-		_gauges.draw_string(ThemeDB.fallback_font, Vector2(origin.x + (i % 2) * 9 + 2, y0 + (i / 2) * 9 + 7),
-				ArmorData.SLOT_LABEL[slot].substr(0, 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 7, C_BG)
+	var mate = player.partner() if player != null and is_instance_valid(player) else null
+	if mate != null:
+		_gauges.draw_string(ThemeDB.fallback_font, Vector2(origin.x, y0 + 6),
+				player.character_name(mate.id).substr(0, 2), HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color("d7edf3"))
+		var frac := float(mate.hp) / float(maxi(mate.max_hp, 1))
+		_gauges.draw_rect(Rect2(origin.x + 10, y0 + 1, 18, 4), C_BG)
+		_gauges.draw_rect(Rect2(origin.x + 11, y0 + 2, 16 * frac, 2), C_FULL if mate.hp > 0 else C_LOW)
+		y0 += 10.0
+	if player == null or not is_instance_valid(player) or player.character == "ix":
+		_draw_chips(origin, y0)
 
 	# Boss gauge.
 	if boss_hp >= 0:
@@ -146,6 +167,16 @@ func _draw_gauges() -> void:
 		for i in boss_max:
 			var y := bo.y + 2.0 + (boss_max - 1 - i) * 2.0
 			_gauges.draw_rect(Rect2(bo.x + 2, y, 6, 1), C_BOSS if i < boss_hp else C_EMPTY)
+
+
+## Equipped armor part chips: H B A L (IX only).
+func _draw_chips(origin: Vector2, y0: float) -> void:
+	for i in ArmorData.SLOTS.size():
+		var slot: String = ArmorData.SLOTS[i]
+		var c: Color = ArmorData.ARMOR_COLOR[loadout.get(slot, "neutral")]
+		_gauges.draw_rect(Rect2(origin.x + (i % 2) * 9, y0 + (i / 2) * 9, 8, 8), c)
+		_gauges.draw_string(ThemeDB.fallback_font, Vector2(origin.x + (i % 2) * 9 + 2, y0 + (i / 2) * 9 + 7),
+				ArmorData.SLOT_LABEL[slot].substr(0, 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 7, C_BG)
 
 
 func _frame(r: Rect2) -> void:

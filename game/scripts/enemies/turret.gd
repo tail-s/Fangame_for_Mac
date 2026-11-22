@@ -13,10 +13,13 @@ var cooldown := 1.0
 
 func _init() -> void:
 	max_hp = 4
+	copy_kind = "turret"
 
 
 func _physics_process(delta: float) -> void:
 	_tick_flash(delta)
+	if _tick_frozen(delta):
+		return
 	_apply_gravity(delta)
 	velocity.x = 0.0
 	move_and_slide()
@@ -47,3 +50,4 @@ func _draw() -> void:
 	draw_circle(Vector2(0, -7), 5.0, dome)
 	draw_line(Vector2(0, -9), Vector2(0, -9) + aim * 9.0, Color("1c375b"), 3.0)
 	draw_circle(Vector2(0, -8) + aim * 2.0, 1.5, Color("e34f5b"))
+	_draw_frozen()

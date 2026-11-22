@@ -6,6 +6,10 @@ signal loadout_changed
 
 const InputSetup = preload("res://scripts/core/input_setup.gd")
 const ArmorData = preload("res://scripts/armor/armor_data.gd")
+const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
+
+const CHARACTER_IDS := ["ix", "sable", "echo"]
+const DEFAULT_PARTY := ["ix", "sable"]
 
 const SAVE_VERSION := 1
 const PRESET_COUNT := 3
@@ -38,6 +42,8 @@ func default_data() -> Dictionary:
 		"cleared": [],
 		"collected": [],
 		"hp_bonus": 0,
+		"weapons": [],
+		"party": DEFAULT_PARTY.duplicate(),
 	}
 
 
@@ -71,12 +77,15 @@ func load_game() -> bool:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return false
 	var d := default_data()
-	for key in ["unlocked", "cleared", "collected"]:
+	for key in ["unlocked", "cleared", "collected", "weapons"]:
 		if typeof(parsed.get(key)) == TYPE_ARRAY:
 			for v in parsed[key]:
 				if typeof(v) == TYPE_STRING and not d[key].has(v):
 					d[key].append(v)
 	d["unlocked"] = d["unlocked"].filter(func(id): return ArmorData.PART_DESC.has(id))
+	d["weapons"] = d["weapons"].filter(func(id): return WeaponShot.ORDER.has(id))
+	if _valid_party(parsed.get("party")):
+		d["party"] = parsed["party"].duplicate()
 	d["hp_bonus"] = clampi(int(parsed.get("hp_bonus", 0)), 0, 32)
 	data = d
 	if typeof(parsed.get("presets")) == TYPE_ARRAY:
@@ -107,7 +116,48 @@ func unlock_all() -> void:
 	for id in ArmorData.PART_DESC:
 		if not id.begins_with("neutral_") and not data["unlocked"].has(id):
 			data["unlocked"].append(id)
+	for id in WeaponShot.ORDER:
+		if not data["weapons"].has(id):
+			data["weapons"].append(id)
 	save_game()
+
+
+# --- weapons & party -------------------------------------------------------------
+
+func unlock_weapon(id: String) -> void:
+	if WeaponShot.ORDER.has(id) and not data["weapons"].has(id):
+		data["weapons"].append(id)
+		save_game()
+
+
+## ["buster"] + unlocked special weapons in boss order.
+func weapons_available() -> Array:
+	var out := ["buster"]
+	for id in WeaponShot.ORDER:
+		if data["weapons"].has(id):
+			out.append(id)
+	return out
+
+
+func party() -> Array:
+	return data["party"]
+
+
+func set_party(ids: Array) -> bool:
+	if not _valid_party(ids):
+		return false
+	data["party"] = ids.duplicate()
+	save_game()
+	return true
+
+
+func _valid_party(ids) -> bool:
+	if typeof(ids) != TYPE_ARRAY or ids.is_empty() or ids.size() > 2:
+		return false
+	for id in ids:
+		if not CHARACTER_IDS.has(id) or ids.count(id) > 1:
+			return false
+	return true
 
 
 func unlocked_count() -> int:

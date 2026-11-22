@@ -45,6 +45,9 @@ func _release() -> void:
 	p.in_shoot = false
 	p.in_dash = false
 	p.in_special = false
+	p.in_up = false
+	p.in_down = false
+	p.in_tag = false
 
 
 func _teleport(pos: Vector2) -> void:
@@ -62,6 +65,26 @@ func _teleport(pos: Vector2) -> void:
 func _equip(h: String, b: String, a: String, l: String) -> void:
 	for pair in [["head", h], ["body", b], ["arm", a], ["leg", l]]:
 		Game.set_slot(pair[0], pair[1])
+
+
+## SABLE 3-hit combo: press during the second half of each swing.
+func _saber_combo(extra_frames: int) -> void:
+	var p = _p()
+	p.in_shoot = true
+	await _frames(1)
+	p.in_shoot = false
+	var presses := 1
+	for f in 60:
+		await _frames(1)
+		var a = p.attack
+		if presses < 3 and not p.in_shoot and a.swing == presses and a.swing_t > a.swing_len * 0.5:
+			p.in_shoot = true
+			presses += 1
+		else:
+			p.in_shoot = false
+		if presses == 3 and a.swing == 3 and a.swing_t > a.swing_len * 0.4:
+			break
+	await _frames(extra_frames if extra_frames < 3 else 0)
 
 
 func _tour() -> void:
@@ -154,22 +177,123 @@ func _tour() -> void:
 	await _frames(14)
 	await _shot("11_cracked_wall_broken")
 
+	# Party select, tag combo, SABLE.
+	Game.set_party(["ix", "sable"])
+	main.show_select()
+	main._show_party_select("training")
+	await _frames(20)
+	await _shot("12_party_select")
+	main.start_stage("training")
+	await _frames(10)
+	await _teleport(Vector2(600, 270))
+	p = _p()
+	p.register_hit()
+	p.in_tag = true
+	await _frames(6)
+	await _shot("13_tag_combo")
+	_release()
+	p.in_tag = false
+	await _frames(40)
+	await _saber_combo(10)
+	await _shot("14_sable_combo")
+	await _frames(30)
+	p = _p()
+	p.in_special = true
+	await _frames(3)
+	await _shot("15_sable_parry")
+	_release()
+	await _frames(20)
+
+	# ECHO: aimed fire, hover, copy -> mini form through the tunnel.
+	Game.set_party(["echo", "ix"])
+	main.start_stage("training")
+	await _frames(10)
+	await _teleport(Vector2(600, 270))
+	p = _p()
+	p.in_up = true
+	p.in_dir = 1
+	p.in_shoot = true
+	await _frames(16)
+	await _shot("16_echo_aim_diagonal")
+	_release()
+	p.in_up = false
+	await _frames(20)
+	p.in_jump = true
+	await _frames(30)
+	p.in_jump = false
+	await _frames(2)
+	p.in_jump = true
+	p.in_shoot = true
+	await _frames(14)
+	await _shot("17_echo_hover")
+	_release()
+	await _frames(40)
+	await _teleport(Vector2(352, 270))
+	p = _p()
+	p.attack.copy = "mini"
+	p.in_special = true
+	await _frames(3)
+	p.in_special = false
+	p.in_dir = 1
+	await _frames(45)
+	await _shot("18_echo_mini_tunnel")
+	_release()
+
+	# IX special weapons.
+	Game.set_party(["ix", "echo"])
+	main.start_stage("training")
+	await _frames(10)
+	await _teleport(Vector2(760, 270))
+	p = _p()
+	p.weapon_index = 1
+	for i in 3:
+		p.in_shoot = true
+		await _frames(2)
+		p.in_shoot = false
+		await _frames(5)
+	await _frames(4)
+	await _shot("19_refraction_beam")
+	await _frames(40)
+	p.weapon_index = 4
+	p.facing = -1
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(10)
+	await _shot("20_freeze_lance")
+	await _frames(30)
+	p.weapon_index = 6
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(12)
+	await _shot("21_pulse_ring")
+	await _frames(30)
+	p.weapon_index = 2
+	p.facing = 1
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(20)
+	await _shot("22_gravity_wing")
+	_release()
+
 	# Prism Gecko stage: lasers, fake platforms (revealed by Vanguard HEAD), holograms.
 	main.start_stage("prism_gecko")
 	await _frames(10)
 	await _teleport(Vector2(470, 270))
 	await _frames(100)
-	await _shot("12_laser_corridor")
+	await _shot("30_laser_corridor")
 	_equip(N, N, N, N)
 	await _teleport(Vector2(990, 270))
 	await _frames(10)
-	await _shot("13_fake_platforms_hidden")
+	await _shot("31_fake_platforms_hidden")
 	_equip(V, N, N, N)
 	await _frames(5)
-	await _shot("14_fake_platforms_revealed")
+	await _shot("32_fake_platforms_revealed")
 	await _teleport(Vector2(1530, 270))
 	await _frames(30)
-	await _shot("15_hologram_platforms")
+	await _shot("33_hologram_platforms")
 
 	# Boss.
 	_equip(V, A, V, A)
@@ -179,13 +303,13 @@ func _tour() -> void:
 	await _frames(90)
 	_release()
 	await _frames(40)
-	await _shot("16_boss_intro")
+	await _shot("34_boss_intro")
 	for i in 240:
 		await _frames(1)
 		_p().invuln_timer = 1.0
 		if i % 40 == 0:
 			_p().in_shoot = not _p().in_shoot
-	await _shot("17_boss_fight")
+	await _shot("35_boss_fight")
 	main.boss.take_damage(17)
 	for i in 300:
 		await _frames(1)
@@ -193,9 +317,9 @@ func _tour() -> void:
 		if main.boss.state == 8:  # DECOY
 			break
 	await _frames(20)
-	await _shot("18_boss_phase2")
+	await _shot("36_boss_phase2")
 	main.boss._invuln = 0.0
 	main.boss.take_damage(99)
 	await _frames(150)
-	await _shot("19_mission_complete")
+	await _shot("37_mission_complete")
 	get_tree().quit()

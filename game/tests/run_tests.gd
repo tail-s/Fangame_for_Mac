@@ -6,6 +6,9 @@ const Player = preload("res://scripts/player/player.gd")
 const Level = preload("res://scripts/level/level.gd")
 const Breakable = preload("res://scripts/level/breakable.gd")
 const Shockwave = preload("res://scripts/combat/shockwave.gd")
+const Walker = preload("res://scripts/enemies/walker.gd")
+const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
+const EnemyShot = preload("res://scripts/combat/enemy_shot.gd")
 const InputSetup = preload("res://scripts/core/input_setup.gd")
 
 const FLOOR := Rect2(-400, 100, 1200, 32)
@@ -49,6 +52,16 @@ func _run_all() -> void:
 	await test_level_file()
 	await test_prism_stage()
 	await test_boss()
+	await test_party_swap()
+	await test_character_down()
+	await test_tag_combo()
+	await test_saber_styles()
+	await test_saber_crush_breaks_wall()
+	await test_parry()
+	await test_echo_aim_and_hover()
+	await test_echo_copy_mini()
+	await test_weapons()
+	await test_boss_weakness()
 	test_save_roundtrip()
 	print("\n%d passed, %d failed" % [_pass, _fail])
 	quit(1 if _fail > 0 else 0)
@@ -338,6 +351,234 @@ func test_boss() -> void:
 	await process_frame
 
 
+# --- party / partner / weapon tests ------------------------------------------------
+
+func test_party_swap() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.setup_party(["ix", "sable"], 16)
+	p.take_damage(5, p.position.x - 10.0)
+	p.invuln_timer = 0.0
+	await _frames(30)
+	p.in_tag = true
+	await _frames(2)
+	p.in_tag = false
+	_check(p.character == "sable" and p.hp == 16, "Tab swaps to the partner with its own HP")
+	await _frames(2)
+	p.in_tag = true
+	await _frames(2)
+	p.in_tag = false
+	_check(p.character == "sable", "swap has a cooldown")
+	await _frames(70)
+	p.in_tag = true
+	await _frames(2)
+	p.in_tag = false
+	_check(p.character == "ix" and p.hp == 11, "swapping back restores IX's HP (%d)" % p.hp)
+	await _free(w)
+
+
+func test_character_down() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.setup_party(["ix", "echo"], 16)
+	var died := [false]
+	p.died.connect(func() -> void: died[0] = true)
+	p.take_damage(99, p.position.x - 10.0)
+	_check(p.character == "echo" and p.is_alive() and not died[0], "a downed character hands over to the partner")
+	p.invuln_timer = 0.0
+	p.take_damage(99, p.position.x - 10.0)
+	_check(died[0] and not p.is_alive(), "the run fails only when both are down")
+	await _free(w)
+
+
+func test_tag_combo() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.setup_party(["ix", "sable"], 16)
+	p.register_hit()
+	p.in_tag = true
+	await _frames(2)
+	p.in_tag = false
+	_check(p.state == Player.State.SPECIAL and p.special_kind == "tag_strike",
+			"swapping right after a hit starts a tag combo strike")
+	await _free(w)
+
+
+func test_saber_styles() -> void:
+	var totals := []
+	for style in 3:
+		var w := _world([FLOOR])
+		var p = await _grounded(w)
+		p.setup_party(["sable"], 16)
+		p.attack.style = style
+		var foe = Walker.new()
+		foe.max_hp = 99
+		foe.speed = 0.0
+		foe.position = Vector2(18, 100)
+		w.add_child(foe)
+		await _frames(3)
+		await _saber_combo(p)
+		totals.append(99 - foe.hp)
+		await _free(w)
+	_check(totals == [4, 7, 4], "saber 3-hit combo damage by style (flash, crush, counter) = %s" % str(totals))
+
+
+func test_saber_crush_breaks_wall() -> void:
+	var w := _world([FLOOR])
+	var wall = Breakable.new()
+	wall.rect = Rect2(14, 52, 16, 48)
+	w.add_child(wall)
+	var p = await _grounded(w)
+	p.setup_party(["sable"], 16)
+	p.attack.style = 1
+	await _saber_combo(p)
+	_check(not is_instance_valid(wall) or wall.is_queued_for_deletion(), "crush style 3rd slash breaks a cracked wall")
+	await _free(w)
+
+
+func test_parry() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.setup_party(["sable"], 16)
+	p.in_special = true
+	await _frames(2)
+	p.in_special = false
+	p.take_damage(4, p.position.x + 10.0)
+	_check(p.hp == 16 and p.attack.swing == 7, "parry blocks the hit and counters")
+	await _free(w)
+
+
+func test_echo_aim_and_hover() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.setup_party(["echo"], 16)
+	p.in_up = true
+	p.in_shoot = true
+	await _frames(20)
+	p.in_shoot = false
+	p.in_up = false
+	var shots := get_nodes_in_group("echo_shot")
+	_check(shots.size() >= 3 and shots[0].velocity.y < -300.0, "ECHO rapid-fires and aims straight up (%d shots)" % shots.size())
+	await _frames(30)
+	p.in_jump = true
+	await _frames(30)
+	p.in_jump = false
+	await _frames(2)
+	var y0: float = p.position.y
+	p.in_jump = true
+	await _frames(20)
+	_check(absf(p.position.y - y0) < 1.0 and p.hovering, "ECHO hovers while jump is held in the air")
+	await _free(w)
+
+
+func test_echo_copy_mini() -> void:
+	# A low ceiling 18 px above the floor between x = 60 and 140.
+	var w := _world([FLOOR, Rect2(60, 50, 80, 32)])
+	var p = await _grounded(w)
+	p.setup_party(["echo"], 16)
+	var foe = Walker.new()
+	foe.max_hp = 2
+	foe.drop_chance = 0.0
+	foe.position = Vector2(40, 100)
+	w.add_child(foe)
+	await _frames(2)
+	p.in_special = true
+	await _frames(2)
+	p.in_special = false
+	await _frames(30)
+	_check(p.attack.copy == "mini", "copy round copies a walker")
+	p.in_special = true
+	await _frames(2)
+	p.in_special = false
+	_check(p.mini, "special turns ECHO into the mini form")
+	p.in_dir = 1
+	await _frames(60)
+	_check(p.position.x > 80.0, "mini form fits under an 18 px ceiling (x=%.0f)" % p.position.x)
+	p.in_dir = 0
+	p.in_special = true
+	await _frames(2)
+	p.in_special = false
+	_check(p.mini, "cannot stand up under the low ceiling")
+	await _free(w)
+
+
+func test_weapons() -> void:
+	var w := _world([FLOOR, Rect2(120, 40, 16, 60)])
+	var p = await _grounded(w)
+	p.weapons = ["buster"] + WeaponShot.ORDER
+	# Refraction Beam bounces back from the wall.
+	p.weapon_index = 1
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(25)
+	var beams := get_nodes_in_group("weapon_refraction_beam")
+	_check(beams.size() == 1 and beams[0].velocity.x < 0.0, "Refraction Beam bounces off a wall")
+	_check(p.weapon_energy["refraction_beam"] == WeaponShot.MAX_ENERGY - 1.0, "weapon energy is spent")
+	await _frames(60)
+	# Freeze Lance freezes a walker.
+	var foe = Walker.new()
+	foe.max_hp = 99
+	foe.position = Vector2(60, 100)
+	w.add_child(foe)
+	p.weapon_index = 4
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(15)
+	_check(foe.frozen > 0.0, "Freeze Lance freezes an enemy")
+	# Pulse Ring erases an enemy shot and hits the walker.
+	var bullet = EnemyShot.new()
+	bullet.position = p.position + Vector2(30, -14)
+	w.add_child(bullet)
+	var hp0: int = foe.hp
+	p.weapon_index = 6
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(25)
+	_check(not is_instance_valid(bullet) and foe.hp < hp0, "Pulse Ring erases enemy shots and damages around IX")
+	# Core Drill breaks a cracked wall.
+	foe.queue_free()
+	var wall = Breakable.new()
+	wall.rect = Rect2(40, 68, 16, 32)
+	w.add_child(wall)
+	p.weapon_index = 5
+	await _frames(70)
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	await _frames(25)
+	_check(not is_instance_valid(wall) or wall.is_queued_for_deletion(), "Core Drill breaks a cracked wall")
+	# Empty energy: no shot.
+	p.weapon_energy["heat_mirage"] = 0.0
+	p.weapon_index = 3
+	p.in_shoot = true
+	await _frames(2)
+	p.in_shoot = false
+	_check(get_nodes_in_group("weapon_heat_mirage").is_empty(), "no shot without weapon energy")
+	await _free(w)
+
+
+func test_boss_weakness() -> void:
+	var Gecko = load("res://scripts/enemies/prism_gecko.gd")
+	var w := _world([FLOOR])
+	var b = Gecko.new()
+	b.arena = Rect2(-200, 0, 400, 100)
+	w.add_child(b)
+	b.state = Gecko.S.RUN
+	b.take_damage(2, "buster")
+	b._invuln = 0.0
+	var hp0: int = b.hp
+	b.take_damage(3, "pulse_ring")
+	_check(hp0 - b.hp == 8 and b.state == Gecko.S.DROP, "Pulse Ring is Prism Gecko's weakness (x2.5, interrupts)")
+	b._invuln = 0.0
+	b.state = Gecko.S.RUN
+	b.take_damage(3, "pulse_ring")
+	_check(b.state == Gecko.S.RUN, "weakness stagger has a cooldown (no stun lock)")
+	await _free(w)
+
+
 func test_save_roundtrip() -> void:
 	var GameScript = load("res://scripts/autoload/game.gd")
 	var path := "user://test_save.json"
@@ -353,6 +594,8 @@ func test_save_roundtrip() -> void:
 	g.collect("prism_gecko_hp_130_16")
 	g.add_hp_bonus(2)
 	g.mark_cleared("training")
+	g.unlock_weapon("refraction_beam")
+	_check(not g.set_party(["ix", "ix"]) and g.set_party(["sable", "echo"]), "party validation")
 	g.save_game()
 	var g2 = GameScript.new()
 	g2.save_path = path
@@ -363,6 +606,8 @@ func test_save_roundtrip() -> void:
 	_check(g2.max_hp() == 18 and g2.is_cleared("training") and g2.is_collected("prism_gecko_hp_130_16"),
 			"progress restored (HP, clears, pickups)")
 	_check(g2.stats.reveal and g2.stats.flight, "stats recomputed from the loaded loadout")
+	_check(g2.weapons_available() == ["buster", "refraction_beam"] and g2.party() == ["sable", "echo"],
+			"weapons and party restored")
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("{ not json")
 	f = null
@@ -552,6 +797,22 @@ func test_level_file() -> void:
 
 
 # --- helpers ---------------------------------------------------------------------
+
+## Presses attack at the second half of each swing: COMBO1 -> COMBO2 -> COMBO3.
+func _saber_combo(p) -> void:
+	p.in_shoot = true
+	await physics_frame
+	p.in_shoot = false
+	var presses := 1
+	for f in 120:
+		await physics_frame
+		var a = p.attack
+		if presses < 3 and not p.in_shoot and a.swing == presses and a.swing_t > a.swing_len * 0.5:
+			p.in_shoot = true
+			presses += 1
+		else:
+			p.in_shoot = false
+
 
 func _lo(h: String, b: String, a: String, l: String) -> Dictionary:
 	return {"head": h, "body": b, "arm": a, "leg": l}

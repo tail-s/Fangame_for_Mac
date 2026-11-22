@@ -1,8 +1,11 @@
 extends Area2D
-## Buster projectile. Level 0 = tap shot, 1 = mid charge, 2 = full charge.
-## A full charge passes through enemies it destroys (all enemies with Vanguard ARM).
-## Armor flags: breaker (breaks cracked walls), homing (tap shots curve toward a
-## close enemy), spread (Aero ARM: three smaller shots).
+## Player projectile.
+## kind "buster": IX's buster. level 0 = tap shot, 1 = mid charge, 2 = full charge.
+##   A full charge passes through enemies it destroys (all enemies with Vanguard ARM).
+##   Armor flags: breaker (breaks cracked walls), homing (tap shots curve toward a
+##   close enemy), spread pieces (Aero ARM: three smaller shots).
+## kind "echo": ECHO's rapid-fire pistol round (any direction).
+## kind "copy": ECHO's copy round — destroying an enemy with it copies its data.
 
 const Layers = preload("res://scripts/core/layers.gd")
 const Explosion = preload("res://scripts/fx/explosion.gd")
@@ -10,6 +13,7 @@ const Explosion = preload("res://scripts/fx/explosion.gd")
 const SIZES := [Vector2(6, 4), Vector2(10, 8), Vector2(22, 14)]
 const HOMING_RANGE := 72.0
 
+var kind := "buster"
 var level := 0
 var dir := 1
 var velocity := Vector2.ZERO
@@ -20,12 +24,14 @@ var breaker := false
 var homing := false
 var small := false
 var life := 1.3
+var source = null
 var _t := 0.0
 var _hit := {}
 var _done := false
 
 
 func setup(lv: int, d: int, angle := 0.0, spread_piece := false) -> void:
+	kind = "buster"
 	level = clampi(lv, 0, 2)
 	dir = d
 	small = spread_piece
@@ -43,17 +49,41 @@ func setup(lv: int, d: int, angle := 0.0, spread_piece := false) -> void:
 	velocity = Vector2(cos(angle) * dir, sin(angle)) * speed
 
 
+## ECHO rounds: "echo" (rapid fire) or "copy" (copy round), fired along `aim`.
+func setup_vector(k: String, aim: Vector2, src) -> void:
+	kind = k
+	source = src
+	level = 0
+	dir = 1 if aim.x >= 0.0 else -1
+	if k == "copy":
+		velocity = aim.normalized() * 210.0
+		damage = 2
+		life = 1.0
+	else:
+		velocity = aim.normalized() * 340.0
+		damage = 1
+		life = 0.9
+
+
 func _ready() -> void:
 	collision_layer = Layers.PLAYER_SHOT
 	collision_mask = Layers.WORLD | Layers.ENEMY
 	var cs := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = SIZES[level] * (0.7 if small else 1.0)
+	match kind:
+		"echo":
+			rect.size = Vector2(5, 5)
+			add_to_group("echo_shot")
+		"copy":
+			rect.size = Vector2(9, 9)
+			add_to_group("copy_shot")
+		_:
+			rect.size = SIZES[level] * (0.7 if small else 1.0)
+			if level == 0:
+				add_to_group("player_shot_small")
 	cs.shape = rect
 	add_child(cs)
 	add_to_group("player_shot")
-	if level == 0:
-		add_to_group("player_shot_small")
 	body_entered.connect(_on_body_entered)
 
 
@@ -89,7 +119,11 @@ func _on_body_entered(body: Node) -> void:
 		if _hit.has(body):
 			return
 		_hit[body] = true
-		var killed: bool = body.take_damage(damage)
+		var killed: bool = body.take_damage(damage, kind)
+		if source != null and is_instance_valid(source):
+			source.register_hit()
+			if kind == "copy" and killed:
+				source.on_copy_kill(body.get("copy_kind"))
 		if not (pierce_all or (pierce and killed)):
 			_impact()
 	elif body.is_in_group("breakable"):
@@ -111,6 +145,15 @@ func _impact() -> void:
 
 
 func _draw() -> void:
+	if kind == "echo":
+		draw_circle(Vector2.ZERO, 2.5, Color("5ad19a"))
+		draw_circle(Vector2.ZERO, 1.2, Color.WHITE)
+		return
+	if kind == "copy":
+		var c := Color("b78af3") if int(_t * 20.0) % 2 == 0 else Color("5ad19a")
+		draw_arc(Vector2.ZERO, 5.0, 0.0, TAU, 12, c, 2.0)
+		draw_circle(Vector2.ZERO, 2.0, Color.WHITE)
+		return
 	var k := 0.7 if small else 1.0
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(k, k))
 	match level:

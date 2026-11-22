@@ -1,5 +1,6 @@
 extends CharacterBody2D
-## Base class for prototype enemies: HP, hit flash, contact damage, death burst.
+## Base class for prototype enemies: HP, hit flash, contact damage, freeze,
+## copy data for ECHO, item drops and the death burst.
 ## Enemies only collide with the world; the player passes through them and takes
 ## contact damage via its hurtbox.
 
@@ -7,13 +8,18 @@ signal killed
 
 const Layers = preload("res://scripts/core/layers.gd")
 const Explosion = preload("res://scripts/fx/explosion.gd")
+const Drop = preload("res://scripts/level/drop.gd")
 const GRAVITY := 900.0
 
 @export var max_hp := 3
 @export var contact_damage := 2
+## What ECHO gets when a copy round destroys this enemy ("" = nothing).
+@export var copy_kind := ""
+@export var drop_chance := 0.35
 
 var hp := 0
 var flash := 0.0
+var frozen := 0.0
 
 
 func _ready() -> void:
@@ -34,11 +40,11 @@ func body_size() -> Vector2:
 
 
 func get_contact_damage() -> int:
-	return contact_damage
+	return 0 if frozen > 0.0 else contact_damage
 
 
-## Returns true if this hit destroyed the enemy.
-func take_damage(amount: int) -> bool:
+## Returns true if this hit destroyed the enemy. `weapon` is the attack id.
+func take_damage(amount: int, _weapon := "") -> bool:
 	if hp <= 0:
 		return false
 	hp -= amount
@@ -48,6 +54,11 @@ func take_damage(amount: int) -> bool:
 		_die()
 		return true
 	return false
+
+
+## Freeze Lance: stop moving and attacking for `seconds`.
+func freeze(seconds: float) -> void:
+	frozen = maxf(frozen, seconds)
 
 
 func find_player():
@@ -61,6 +72,11 @@ func _die() -> void:
 	var fx := Explosion.new()
 	fx.position = position + Vector2(0, -body_size().y / 2.0)
 	get_parent().add_child(fx)
+	if randf() < drop_chance:
+		var drop := Drop.new()
+		drop.kind = "hp" if randf() < 0.5 else "energy"
+		drop.position = position + Vector2(0, -4)
+		get_parent().add_child.call_deferred(drop)
 	killed.emit()
 	queue_free()
 
@@ -73,3 +89,21 @@ func _apply_gravity(delta: float) -> void:
 func _tick_flash(delta: float) -> void:
 	if flash > 0.0:
 		flash = maxf(flash - delta, 0.0)
+
+
+## Shared frozen-state step; returns true while frozen (skip normal behaviour).
+func _tick_frozen(delta: float) -> bool:
+	if frozen <= 0.0:
+		return false
+	frozen = maxf(frozen - delta, 0.0)
+	velocity.x = 0.0
+	_apply_gravity(delta)
+	move_and_slide()
+	queue_redraw()
+	return true
+
+
+func _draw_frozen() -> void:
+	if frozen > 0.0:
+		var s := body_size()
+		draw_rect(Rect2(-s.x / 2.0 - 1, -s.y - 1, s.x + 2, s.y + 2), Color(0.57, 0.85, 0.98, 0.55))
