@@ -70,6 +70,13 @@ const C_GOLD := Color("f0b84a")
 const C_PALE := Color("d7edf3")
 const C_HEAT := Color("ef9352")
 const C_GRAVITY := Color("8397f1")
+# Drawing-only shades (body regions; the Actors shader adds outline and edges).
+const C_PANEL := Color("2a5c9a")
+const C_LEG := Color("2c4f7c")
+const C_LEG_FAR := Color("152540")
+const C_PAW := Color("8a9bb4")
+const C_PAW_FAR := Color("3b4a66")
+const C_GLINT := Color("fffbea")
 
 
 class Mirage:
@@ -613,6 +620,7 @@ func _boss_draw(white: bool) -> void:
 
 ## The fennec around `o`, facing `dir`. `tint` (alpha > 0) draws a one-colour
 ## silhouette (heat mirages). `ears` scales the panel ears (folded in the intro).
+## Flat-colour regions; the Actors shader adds the outline and edge light/shadow.
 func _draw_fennec(o: Vector2, dir: float, crouch: float, tilt: float, glow: float, white: bool,
 		tint: Color, alpha: float, ears := 1.0, charge := 0.0) -> void:
 	draw_set_transform(o + Vector2(0, crouch * 3.0), 0.0, Vector2(dir, 1.0 - crouch * 0.12))
@@ -622,34 +630,54 @@ func _draw_fennec(o: Vector2, dir: float, crouch: float, tilt: float, glow: floa
 		if tint.a > 0.0:
 			return Color(tint, tint.a * alpha)
 		return Color(c, c.a * alpha)
-	# tail
-	var sway := sin(t * 6.0) * 1.5
-	draw_colored_polygon(PackedVector2Array([Vector2(-10, 1), Vector2(-16, -3 + sway),
-			Vector2(-22, -9 + sway), Vector2(-24, -3 + sway), Vector2(-20, 4), Vector2(-14, 7),
-			Vector2(-10, 6)]), col.call(C_SAND_DARK))
-	draw_circle(Vector2(-22, -6 + sway), 2.5, col.call(C_PALE))
-	# legs (scissor while running)
+	# Silhouettes (hit flash, mirages) skip the inner detail regions so the
+	# translucent layers do not stack up.
+	var detail := not white and tint.a <= 0.0
 	var run := sin(t * 30.0) * 3.0 if state in [S.DASH, S.SKID] or tint.a > 0.0 else 0.0
-	for lx in [-8.0, -4.0, 5.0, 9.0]:
-		var s: float = run if lx < 0.0 else -run
-		draw_line(Vector2(lx, 4), Vector2(lx + s, FEET - 1.0), col.call(C_NAVY), 3.0)
-		draw_rect(Rect2(lx + s - 2.0, FEET - 2.0, 4, 2), col.call(C_INK))
-	# body + armour saddle + collar
-	draw_colored_polygon(PackedVector2Array([Vector2(-14, 2), Vector2(-11, -4), Vector2(-3, -6),
-			Vector2(8, -5), Vector2(12, 0), Vector2(10, 6), Vector2(-11, 7)]), col.call(C_SAND))
-	draw_colored_polygon(PackedVector2Array([Vector2(-9, -5), Vector2(5, -5), Vector2(3, 0),
-			Vector2(-8, 0)]), col.call(C_NAVY))
-	draw_line(Vector2(-7, -2.5), Vector2(3, -2.5), col.call(C_CYAN), 1.0)
-	draw_colored_polygon(PackedVector2Array([Vector2(6, -5), Vector2(10, -6), Vector2(12, 0),
-			Vector2(9, 2)]), col.call(C_PURPLE))
-	# head
-	draw_colored_polygon(PackedVector2Array([Vector2(7, -8), Vector2(13, -11), Vector2(17, -8),
-			Vector2(22, -3), Vector2(17, 0), Vector2(11, 1), Vector2(7, -3)]), col.call(C_SAND_LIGHT))
-	draw_circle(Vector2(21.5, -3), 1.5, col.call(C_INK))
-	draw_line(Vector2(11.5, -7), Vector2(16.5, -5.5), col.call(C_GOLD if glow > 0.6 else C_RED), 2.0)
-	# solar-panel ears: big splayed panels (back one slightly darker)
-	_draw_ear(EAR_BACK[0], EAR_BACK[1], tilt, glow, ears, C_NAVY.darkened(0.3), col)
-	_draw_ear(EAR_FRONT[0], EAR_FRONT[1], tilt, glow, ears, C_NAVY, col)
+	# far legs and back ear (behind the body)
+	for lx in [-4.0, 9.0]:
+		_fennec_leg(lx, -run if lx < 0.0 else run, false, col)
+	_draw_ear(EAR_BACK[0], EAR_BACK[1], tilt, glow, ears, false, detail, col)
+	# tail: bushy two-tone brush with a pale tip
+	var sway := sin(t * 6.0) * 1.5
+	_poly([Vector2(-10, 1), Vector2(-16, -3 + sway), Vector2(-22, -9 + sway), Vector2(-24, -3 + sway),
+			Vector2(-20, 4), Vector2(-14, 7), Vector2(-10, 6)], col.call(C_SAND_DARK))
+	if detail:
+		_poly([Vector2(-10, 1), Vector2(-16, -3 + sway), Vector2(-21, -8 + sway), Vector2(-20, -4 + sway),
+				Vector2(-15, 1), Vector2(-10, 3)], col.call(C_SAND))
+	_poly([Vector2(-20, -5 + sway), Vector2(-22, -10 + sway), Vector2(-25, -6 + sway),
+			Vector2(-24, -1 + sway), Vector2(-21, -1 + sway)], col.call(C_PALE))
+	# body: sand side, dark belly, navy saddle with a cyan cell strip, purple collar
+	_poly([Vector2(-14, 2), Vector2(-11, -4), Vector2(-3, -6), Vector2(8, -5), Vector2(12, 0),
+			Vector2(10, 6), Vector2(-11, 7)], col.call(C_SAND))
+	if detail:
+		_poly([Vector2(-14, 3), Vector2(-8, 3), Vector2(4, 3), Vector2(11, 2), Vector2(10, 6),
+				Vector2(-11, 7)], col.call(C_SAND_DARK))
+		_poly([Vector2(-10, -5), Vector2(-3, -7), Vector2(5, -6), Vector2(4, 0), Vector2(-9, 0)],
+				col.call(C_NAVY))
+		draw_rect(Rect2(-7, -4, 9, 2), col.call(C_CYAN))
+		draw_rect(Rect2(-7, -4, 2, 1), col.call(C_GLINT))
+		_poly([Vector2(5, -6), Vector2(9, -7), Vector2(12, -1), Vector2(10, 3), Vector2(7, 2)],
+				col.call(C_PURPLE))
+		draw_rect(Rect2(9, 0, 2, 2), col.call(C_GOLD))
+	# near legs (over the belly)
+	for lx in [-8.0, 5.0]:
+		_fennec_leg(lx, run if lx < 0.0 else -run, true, col)
+	# front solar-panel ear (behind the head)
+	_draw_ear(EAR_FRONT[0], EAR_FRONT[1], tilt, glow, ears, true, detail, col)
+	# head: light skull, sand jaw, pale throat ruff, slanted visor eye, nose
+	_poly([Vector2(7, -8), Vector2(13, -11), Vector2(17, -8), Vector2(22, -4), Vector2(22, -2),
+			Vector2(17, 0), Vector2(11, 1), Vector2(7, -3)], col.call(C_SAND_LIGHT))
+	if detail:
+		_poly([Vector2(14, -2), Vector2(22, -2), Vector2(17, 0), Vector2(14, 0)], col.call(C_SAND))
+		_poly([Vector2(8, -3), Vector2(13, -3), Vector2(15, 0), Vector2(11, 1), Vector2(8, 0)],
+				col.call(C_PALE))
+		_poly([Vector2(10, -9), Vector2(17, -7), Vector2(17, -4), Vector2(10, -6)], col.call(C_INK))
+		_poly([Vector2(11, -8), Vector2(16, -6.5), Vector2(16, -5), Vector2(11, -6.5)],
+				col.call(C_GOLD if glow > 0.6 else C_RED))
+		draw_rect(Rect2(11, -8, 1, 1), col.call(C_GLINT))
+		draw_rect(Rect2(20, -5, 3, 3), col.call(C_INK))
+		draw_rect(Rect2(20, -5, 1, 1), col.call(C_PALE))
 	if charge > 0.0 and tint.a <= 0.0:
 		var tip := _ear_tip(EAR_FRONT[0], EAR_FRONT[1], tilt, ears)
 		for i in 6:
@@ -660,27 +688,46 @@ func _draw_fennec(o: Vector2, dir: float, crouch: float, tilt: float, glow: floa
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+func _poly(pts: Array, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), c)
+
+
+## One leg at body x `lx`, swung by `swing` (running scissor): navy shin and a paw.
+func _fennec_leg(lx: float, swing: float, near: bool, col: Callable) -> void:
+	draw_line(Vector2(lx, 3), Vector2(lx + swing, FEET - 2.0), col.call(C_LEG if near else C_LEG_FAR), 3.0)
+	draw_rect(Rect2(lx + swing - 2.0, FEET - 2.0, 5, 2), col.call(C_PAW if near else C_PAW_FAR))
+
+
 ## Ear tip after the sweep (`tilt` > 0 lays the ear back) and the intro fold (`ears`).
 func _ear_tip(base: Vector2, tip: Vector2, tilt: float, ears: float) -> Vector2:
 	return base + ((tip - base) * ears).rotated(-tilt)
 
 
-func _draw_ear(base: Vector2, tip: Vector2, tilt: float, glow: float, ears: float, fill: Color,
-		col: Callable) -> void:
+## A triangular solar-panel ear: navy panel with checkered lighter cells and a
+## cyan grid (all fill with gold as the ears charge), glint, gold / heat rim.
+func _draw_ear(base: Vector2, tip: Vector2, tilt: float, glow: float, ears: float, front: bool,
+		detail: bool, col: Callable) -> void:
 	var tip_r := _ear_tip(base, tip, tilt, ears)
 	var axis := (tip_r - base).normalized()
 	var side := Vector2(-axis.y, axis.x) * EAR_HALF_W
+	var at := func(k: float, w: float) -> Vector2: return base.lerp(tip_r, k) + side * (w * (1.0 - k))
+	var dim := 0.0 if front else 0.3
 	var pts := PackedVector2Array([base - side, tip_r, base + side])
-	draw_colored_polygon(pts, col.call(fill.lerp(C_GOLD, glow * 0.65)))
-	for k: float in [0.3, 0.55, 0.78]:
-		var m := base.lerp(tip_r, k)
-		var w := side * (1.0 - k)
-		draw_line(m - w, m + w, col.call(Color(C_CYAN, 0.9)), 1.0)
-	draw_line(base, base.lerp(tip_r, 0.9), col.call(Color(C_CYAN, 0.7)), 1.0)
-	draw_line(base.lerp(tip_r, 0.2) + side * 0.5, base.lerp(tip_r, 0.6) + side * 0.2,
-			col.call(Color(C_PALE, 0.55)), 1.0)  # glint
-	pts.append(base - side)
-	draw_polyline(pts, col.call(C_HEAT if phase2 else C_GOLD), 1.0)
+	draw_colored_polygon(pts, col.call(C_NAVY.darkened(dim).lerp(C_GOLD, glow * 0.65)))
+	if detail:
+		var cell := C_PANEL.darkened(dim).lerp(C_GOLD, glow * 0.75)
+		for c in [[0.0, 0.3, 0.0, 1.0], [0.3, 0.55, -1.0, 0.0], [0.55, 0.78, 0.0, 1.0]]:
+			_poly([at.call(c[0], c[2]), at.call(c[0], c[3]), at.call(c[1], c[3]), at.call(c[1], c[2])],
+					col.call(cell))
+		var grid: Color = col.call(C_CYAN.darkened(dim))
+		for k: float in [0.3, 0.55, 0.78]:
+			draw_line(at.call(k, -1.0), at.call(k, 1.0), grid, 1.0)
+		draw_line(base, base.lerp(tip_r, 0.9), grid, 1.0)
+		if front:
+			draw_line(at.call(0.12, -0.5), at.call(0.24, -0.2), col.call(C_GLINT), 1.0)
+			draw_line(at.call(0.4, 0.5), at.call(0.48, 0.25), col.call(C_GLINT), 1.0)
+		pts.append(base - side)
+		draw_polyline(pts, col.call(C_HEAT if phase2 else C_GOLD), 1.0)
 
 
 func _draw_mirage(m) -> void:

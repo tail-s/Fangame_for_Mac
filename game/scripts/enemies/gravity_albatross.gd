@@ -19,6 +19,21 @@ enum S { INTRO, IDLE, SWOOP_AIM, SWOOP, FEATHER, WELL, DIVE_AIM, DIVE, RISE, STA
 ## States that are attacks (tests count how many of these the fight visits).
 const PATTERN_STATES := [S.SWOOP, S.FEATHER, S.WELL, S.DIVE]
 const ACCENT := Color("8397f1")
+# Body palette (flat regions; the Actors shader adds outline and edge light/shadow).
+const C_BODY := Color("d7edf3")
+const C_BELLY := Color("9fb8cc")
+const C_WING := Color("1c375b")
+const C_WING_LIGHT := Color("3a66a0")
+const C_WING_DARK := Color("0d1a33")
+const C_FAR := Color("2a3a5a")
+const C_FAR_LIGHT := Color("41557e")
+const C_TRIM := Color("00b8be")
+const C_METAL := Color("8a9bb4")
+const C_BEAK := Color("f0b84a")
+const C_BEAK_DARK := Color("b27a2a")
+const C_EYE := Color("e34f5b")
+const C_SOCKET := Color("131c34")
+const C_GLINT := Color("ffffff")
 const MARGIN := 12.0
 
 var state := S.INTRO
@@ -350,41 +365,43 @@ func _boss_draw(white: bool) -> void:
 	elif state == S.RISE and _step == 0:
 		wing = -0.2
 	draw_set_transform(off, rot, Vector2(facing, 1.0))
+	var c := func(col: Color) -> Color: return Color.WHITE if white else col
 
-	var c_body := Color.WHITE if white else Color("d7edf3")
-	var c_wing := Color.WHITE if white else Color("1c375b")
-	var c_far := Color.WHITE if white else Color("101b36").lightened(0.12)
-	var c_trim := Color.WHITE if white else Color("00b8be")
-	var c_beak := Color.WHITE if white else Color("f0b84a")
-	var c_eye := Color.WHITE if white else Color("e34f5b")
-	var c_lens := Color.WHITE if white else ACCENT
-
-	# tail fan
-	draw_colored_polygon(PackedVector2Array([Vector2(-12, -2), Vector2(-21, -6), Vector2(-19, 0),
-			Vector2(-21, 5), Vector2(-12, 2)]), c_wing)
-	# far wing (behind the body)
-	_wing(Vector2(-1, -4), wing + 0.25, wing_len * 0.9, c_far, c_far.lightened(0.2))
-	# thruster flicker
+	# far wing (behind the body) and tail fan
+	_wing(Vector2(-1, -4), wing + 0.25, wing_len * 0.9, false, white)
+	_poly([Vector2(-12, -2), Vector2(-21, -7), Vector2(-21, -3), Vector2(-12, 0)], c.call(C_WING_LIGHT))
+	_poly([Vector2(-12, 0), Vector2(-21, -3), Vector2(-19, 1), Vector2(-21, 5), Vector2(-12, 3)],
+			c.call(C_WING))
+	_poly([Vector2(-17, 1), Vector2(-21, 5), Vector2(-17, 3)], c.call(C_WING_DARK))
+	# hover thruster pod + flicker
 	if not white:
 		var flame := 4.0 + sin(t * 40.0) * 1.5
-		draw_colored_polygon(PackedVector2Array([Vector2(-9, 4), Vector2(-7, 4 + flame),
-				Vector2(-5, 4)]), Color("f0b84a", 0.85))
-	# body
-	draw_colored_polygon(PackedVector2Array([Vector2(-14, 0), Vector2(-8, -5), Vector2(4, -6),
-			Vector2(10, -4), Vector2(13, -1), Vector2(10, 3), Vector2(2, 6), Vector2(-8, 5)]), c_body)
-	draw_polyline(PackedVector2Array([Vector2(-12, -2), Vector2(-6, -5), Vector2(4, -6),
-			Vector2(9, -4)]), c_wing, 2.0)
-	draw_line(Vector2(-10, 3), Vector2(6, 4), c_trim, 1.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(-10, 6), Vector2(-7.5, 6 + flame),
+				Vector2(-5, 6)]), Color("f0b84a", 0.85))
+	draw_rect(Rect2(-11, 2, 7, 4), c.call(C_METAL))
+	draw_rect(Rect2(-10, 5, 5, 1), c.call(C_WING_DARK))
 	# talons
-	draw_line(Vector2(-3, 5), Vector2(-1, 9), c_far, 1.5)
-	draw_line(Vector2(1, 5), Vector2(3, 9), c_far, 1.5)
-	# head, visor, hooked beak
-	draw_circle(Vector2(11, -4), 4.5, c_body)
-	draw_rect(Rect2(11.5, -6.5, 3, 2), c_eye)
-	draw_colored_polygon(PackedVector2Array([Vector2(14, -5), Vector2(23, -3), Vector2(21, -1),
-			Vector2(14, -1)]), c_beak)
-	draw_line(Vector2(23, -3), Vector2(22, 0), c_beak, 1.5)
-	# gravity lens
+	for lx in [-3.0, 1.0]:
+		draw_line(Vector2(lx, 5), Vector2(lx + 2.0, 8), c.call(C_WING), 2.0)
+		draw_rect(Rect2(lx + 0.5, 8, 4, 2), c.call(C_METAL))
+	# fuselage: pale side, navy back plate, shaded belly, cyan trim
+	_poly([Vector2(-14, 0), Vector2(-9, -5), Vector2(4, -6), Vector2(10, -4), Vector2(12, 0),
+			Vector2(10, 3), Vector2(2, 6), Vector2(-8, 5)], c.call(C_BODY))
+	_poly([Vector2(-14, 0), Vector2(-9, -5), Vector2(4, -6), Vector2(8, -5), Vector2(3, -4),
+			Vector2(-7, -3)], c.call(C_WING))
+	_poly([Vector2(-11, 3), Vector2(-3, 4), Vector2(9, 2), Vector2(10, 3), Vector2(2, 6), Vector2(-8, 5)],
+			c.call(C_BELLY))
+	draw_line(Vector2(-10, 3), Vector2(-3, 3.5), c.call(C_TRIM), 1.0)
+	# head: pale helmet, visor in a dark socket, hooked two-tone beak
+	draw_circle(Vector2(11, -4), 4.5, c.call(C_BODY))
+	draw_rect(Rect2(11, -7, 5, 3), c.call(C_SOCKET))
+	draw_rect(Rect2(12, -6, 3, 2), c.call(C_EYE))
+	draw_rect(Rect2(12, -6, 1, 1), c.call(C_GLINT))
+	_poly([Vector2(14, -5), Vector2(21, -4), Vector2(23, -3), Vector2(22, -1), Vector2(14, -1)],
+			c.call(C_BEAK))
+	_poly([Vector2(14, -2), Vector2(21, -2), Vector2(19, 0), Vector2(14, 0)], c.call(C_BEAK_DARK))
+	draw_rect(Rect2(21, -3, 2, 3), c.call(C_BEAK_DARK))
+	# gravity lens in a navy housing
 	var lens_r := 3.5
 	var lens_core := 1.4
 	if state == S.WELL and _step > 0:
@@ -393,10 +410,12 @@ func _boss_draw(white: bool) -> void:
 			# about to let go: the lens flares white
 			lens_r = 5.5
 			lens_core = 3.5
-	draw_circle(Vector2(4, 1), lens_r, c_lens)
-	draw_circle(Vector2(4, 1), lens_core, Color.WHITE if white else Color("d7edf3"))
+	draw_circle(Vector2(4, 1), lens_r + 1.5, c.call(C_WING_DARK))
+	draw_circle(Vector2(4, 1), lens_r, c.call(ACCENT))
+	draw_circle(Vector2(4, 1), lens_core, c.call(C_BODY))
+	draw_rect(Rect2(2, -1, 1, 1), c.call(C_GLINT))
 	# near wing (in front)
-	var tip := _wing(Vector2(0, -2), wing, wing_len, c_wing, c_trim)
+	var tip := _wing(Vector2(0, -2), wing, wing_len, true, white)
 	if not white and state == S.FEATHER and _step == 1:
 		var glow := 0.6 + 0.4 * sin(t * 30.0)
 		draw_circle(tip, 2.5, Color("e34f5b", glow))
@@ -404,16 +423,29 @@ func _boss_draw(white: bool) -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-## A long tapered wing from `root`, swept back and raised by `angle`. Returns the tip.
-func _wing(root: Vector2, angle: float, length: float, col: Color, trim: Color) -> Vector2:
+func _poly(pts: Array, col: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), col)
+
+
+## A long wing from `root`, swept back and raised by `angle`: one navy blade with
+## a feathered trailing edge, a lighter inner (covert) section and a trim line
+## along the leading edge. Returns the tip.
+func _wing(root: Vector2, angle: float, length: float, near: bool, white: bool) -> Vector2:
 	var d := Vector2(-cos(angle), -sin(angle))
 	var n := Vector2(-d.y, d.x)
-	var elbow := root + d * (length * 0.42) + n * 4.5
+	var p := func(u: float, v: float) -> Vector2: return root + d * (u * length) + n * v
+	var c := func(col: Color) -> Color: return Color.WHITE if white else col
 	var tip := root + d * length
-	draw_colored_polygon(PackedVector2Array([root + n * 3.0, elbow, tip,
-			root + d * (length * 0.5) - n * 3.0, root - n * 2.5]), col)
-	draw_line(root + n * 3.0, elbow, trim, 1.0)
-	draw_line(elbow, tip, trim, 1.0)
+	_poly([p.call(0.0, 3.0), p.call(0.42, 4.5), tip, p.call(0.88, -1.5), p.call(0.82, -4.0),
+			p.call(0.72, -2.0), p.call(0.64, -4.5), p.call(0.54, -2.5), p.call(0.46, -4.5),
+			p.call(0.36, -3.0), p.call(0.0, -2.5)], c.call(C_WING if near else C_FAR))
+	_poly([p.call(0.0, 3.0), p.call(0.34, 4.3), p.call(0.38, -3.0), p.call(0.0, -2.5)],
+			c.call(C_WING_LIGHT if near else C_FAR_LIGHT))
+	var trim: Color = c.call(C_TRIM if near else C_FAR_LIGHT)
+	draw_line(p.call(0.0, 3.0), p.call(0.42, 4.5), trim, 1.0)
+	draw_line(p.call(0.42, 4.5), tip, trim, 1.0)
+	if near:
+		draw_rect(Rect2(root.x - 1.5, root.y - 1.5, 3, 3), c.call(C_METAL))
 	return tip
 
 

@@ -339,37 +339,119 @@ func _surface_axis() -> Vector2:
 	return Vector2.from_angle(_surface_rotation())
 
 
+# --- drawing ------------------------------------------------------------------
+# Flat-colour regions; the Actors CanvasGroup shader adds the outline and the
+# light / shadow edge between regions. Drawn facing right, feet on y = HALF.
+
+const C_BODY := Color("6543a2")
+const C_BODY_LIGHT := Color("8f70d6")
+const C_BODY_DARK := Color("432a78")
+const C_BODY_DEEP := Color("2a1a52")
+const C_METAL := Color("a3b0d2")
+const C_METAL_DARK := Color("5a6688")
+const C_EYE := Color("f0b84a")
+const C_SOCKET := Color("1d1438")
+const C_GLINT := Color("fbf8ff")
+## Back crystals: [lit facet, mid facet, shaded facet].
+const CRYSTALS := [
+	[Color("b8f8fc"), Color("3de0ee"), Color("1890ab")],
+	[Color("e6d4ff"), Color("b78af3"), Color("7a52c0")],
+	[Color("ffe9a8"), Color("f0b84a"), Color("b07a26")],
+]
+
+
 func _draw() -> void:
 	var rot := _surface_rotation()
 	if state == S.LEAP or state == S.DROP:
 		rot = 0.0 if state == S.DROP else rot
 	draw_set_transform(Vector2.ZERO, rot, Vector2(face, 1.0))
 	var white := _flash > 0.0 and int(_t * 30.0) % 2 == 0
-	var body := Color.WHITE if white else Color("6543a2")
 	var alpha := 1.0
 	if is_decoy:
 		alpha = 0.55 + 0.25 * sin(_t * 18.0)
 	elif state == S.DECOY:
 		alpha = 0.75 + 0.2 * sin(_t * 18.0)
-	var a := func(c: Color) -> Color: return Color(c, c.a * alpha)
-	# tail
-	draw_polyline(PackedVector2Array([Vector2(-10, 3), Vector2(-16, 0), Vector2(-21, 3),
-			Vector2(-24, -1)]), a.call(body.darkened(0.2)), 3.0)
-	# legs
+	var a := func(c: Color) -> Color: return Color(Color.WHITE if white else c, c.a * alpha)
 	var step := sin(_t * 16.0) * 2.0 if state in [S.RUN, S.CLIMB, S.CEILING] else 0.0
-	for lx in [-7.0, 6.0]:
-		draw_line(Vector2(lx, 3), Vector2(lx - 3 + step, 9), a.call(Color("2a3550")), 2.0)
-		draw_line(Vector2(lx + 2, 3), Vector2(lx + 5 - step, 9), a.call(Color("2a3550")), 2.0)
-	# body + prism back plates
-	draw_colored_polygon(PackedVector2Array([Vector2(-12, 4), Vector2(10, 4), Vector2(13, -1),
-			Vector2(8, -6), Vector2(-9, -6)]), a.call(body))
-	var plates := [Color("3de0ee"), Color("b78af3"), Color("f0b84a")]
-	for i in 3:
-		var px := -8.0 + i * 6.0
-		draw_colored_polygon(PackedVector2Array([Vector2(px, -6), Vector2(px + 3, -12),
-				Vector2(px + 6, -6)]), a.call(Color.WHITE if white else plates[i]))
-	# head
-	draw_colored_polygon(PackedVector2Array([Vector2(9, -5), Vector2(18, -3), Vector2(19, 2),
-			Vector2(10, 4)]), a.call(body.lightened(0.15)))
-	draw_rect(Rect2(14, -3, 3, 2), a.call(Color("f0b84a")))
+	# far legs (behind the body), diagonal pairs move together
+	_gecko_leg(Vector2(-5, 1), Vector2(-2 - step, HALF), false, a)
+	_gecko_leg(Vector2(8, 1), Vector2(11 + step, HALF), false, a)
+	_gecko_tail(a)
+	_gecko_body(a)
+	_gecko_crystals(a)
+	_gecko_head(a)
+	# near legs (in front)
+	_gecko_leg(Vector2(-8, 2), Vector2(-12 + step, HALF), true, a)
+	_gecko_leg(Vector2(5, 2), Vector2(8 - step, HALF), true, a)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _poly(pts: Array, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), c)
+
+
+## Tapered tail curling up at the tip, ending in a small prism.
+func _gecko_tail(a: Callable) -> void:
+	_poly([Vector2(-10, -4), Vector2(-16, -2), Vector2(-20, -2), Vector2(-23, -5), Vector2(-24, -3),
+			Vector2(-21, 1), Vector2(-16, 3), Vector2(-10, 4)], a.call(C_BODY))
+	_poly([Vector2(-10, 1), Vector2(-16, 0), Vector2(-21, -1), Vector2(-21, 1), Vector2(-16, 3),
+			Vector2(-10, 4)], a.call(C_BODY_DARK))
+	for rx in [-14, -18]:
+		draw_rect(Rect2(rx, -2, 1, 3), a.call(C_BODY_DARK))
+	_poly([Vector2(-23, -5), Vector2(-25, -10), Vector2(-27, -5), Vector2(-24, -3)], a.call(CRYSTALS[0][1]))
+	_poly([Vector2(-25, -10), Vector2(-25, -4), Vector2(-27, -5)], a.call(CRYSTALS[0][0]))
+
+
+func _gecko_body(a: Callable) -> void:
+	# rounded torso with a dark belly
+	_poly([Vector2(-12, -1), Vector2(-10, -5), Vector2(-5, -7), Vector2(5, -7), Vector2(10, -5),
+			Vector2(12, -2), Vector2(12, 2), Vector2(9, 4), Vector2(-9, 4), Vector2(-12, 2)], a.call(C_BODY))
+	_poly([Vector2(-12, 1), Vector2(-7, 1), Vector2(-4, 2), Vector2(3, 2), Vector2(7, 1), Vector2(12, 1),
+			Vector2(12, 2), Vector2(9, 4), Vector2(-9, 4), Vector2(-12, 2)], a.call(C_BODY_DARK))
+	# gill vents between the leg plates
+	for vx in [-3, -1, 1]:
+		draw_rect(Rect2(vx, -4, 1, 4), a.call(C_SOCKET))
+	# neck collar
+	_poly([Vector2(8, -6), Vector2(10, -6), Vector2(12, 3), Vector2(10, 4)], a.call(C_METAL_DARK))
+
+
+## Three faceted prism plates along the back (the boss's signature).
+func _gecko_crystals(a: Callable) -> void:
+	var xs := [-9.0, -3.0, 3.0]
+	var hs := [8.0, 11.0, 8.0]
+	for i in 3:
+		var x: float = xs[i]
+		var top: float = -6.0 - hs[i]
+		var c: Array = CRYSTALS[i]
+		_poly([Vector2(x, -5), Vector2(x + 3, top), Vector2(x + 6, -5)], a.call(c[1]))
+		_poly([Vector2(x, -5), Vector2(x + 3, top), Vector2(x + 3, -5)], a.call(c[0]))
+		_poly([Vector2(x + 3, -8), Vector2(x + 6, -5), Vector2(x + 3, -5)], a.call(c[2]))
+		draw_rect(Rect2(x + 2, top + 3, 1, 2), a.call(C_GLINT))
+
+
+func _gecko_head(a: Callable) -> void:
+	# broad skull, dark jaw, big gecko eye bulging over the brow
+	_poly([Vector2(9, -6), Vector2(14, -7), Vector2(19, -5), Vector2(22, -2), Vector2(22, 1),
+			Vector2(19, 3), Vector2(11, 4)], a.call(C_BODY))
+	_poly([Vector2(11, 1), Vector2(22, 0), Vector2(22, 1), Vector2(19, 3), Vector2(11, 4)],
+			a.call(C_BODY_DARK))
+	draw_rect(Rect2(13, -8, 5, 5), a.call(C_SOCKET))
+	draw_rect(Rect2(14, -7, 3, 3), a.call(C_EYE))
+	draw_rect(Rect2(14, -7, 1, 1), a.call(C_GLINT))
+	draw_rect(Rect2(20, -2, 1, 1), a.call(C_SOCKET))
+
+
+## A splayed gecko leg: angular armour plate on the body (near legs), knee
+## joint, shin and a wide toe pad.
+func _gecko_leg(hip: Vector2, foot: Vector2, near: bool, a: Callable) -> void:
+	var out := signf(foot.x - hip.x)
+	var knee := Vector2(hip.x + out * 2.0, hip.y + 3.0)
+	if not near:
+		draw_line(hip, knee, a.call(C_BODY_DEEP), 3.0)
+	draw_line(knee, foot - Vector2(0, 1.5), a.call(C_BODY if near else C_BODY_DEEP), 3.0)
+	draw_rect(Rect2(foot.x - 2.0 + out, foot.y - 2.0, 5, 2), a.call(C_METAL if near else C_METAL_DARK))
+	if near:
+		_poly([hip + Vector2(-2, -4), hip + Vector2(2, -4), hip + Vector2(3, -3), hip + Vector2(3, 0),
+				hip + Vector2(out * 1.5, 3), hip + Vector2(-3, 0), hip + Vector2(-3, -3)],
+				a.call(C_BODY_LIGHT))
+		draw_rect(Rect2(knee.x - 1.0, knee.y - 1.0, 2, 2), a.call(C_METAL))
