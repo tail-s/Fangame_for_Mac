@@ -14,6 +14,7 @@ const THEMES := {
 	"terra_pangolin": preload("res://scripts/level/backdrops/terra_pangolin.gd"),
 	"pulse_cicada": preload("res://scripts/level/backdrops/pulse_cicada.gd"),
 	"final_eden_core": preload("res://scripts/level/backdrops/final_eden_core.gd"),
+	"title": preload("res://scripts/level/backdrops/title.gd"),
 }
 const DEFAULT_THEME := "training"
 const ThemeBase = preload("res://scripts/level/backdrops/theme_base.gd")

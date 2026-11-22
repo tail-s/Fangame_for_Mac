@@ -42,8 +42,13 @@ func _ready() -> void:
 
 # --- options ------------------------------------------------------------------
 
+## Automated runs (screenshot tours, galleries, portraits) stay muted whatever the settings say.
+var silent := false
+
+
 func default_settings() -> Dictionary:
-	return {"music": 7, "sfx": 8, "difficulty": "normal", "shake": true, "flashes": true,
+	# Music starts off (it startled people at launch); raise it in OPTIONS.
+	return {"music": 0, "sfx": 8, "difficulty": "normal", "shake": true, "flashes": true,
 			"fullscreen": false}
 
 
@@ -81,7 +86,10 @@ func set_setting(key: String, value) -> void:
 func apply_settings() -> void:
 	var audio := get_node_or_null("/root/Audio")
 	if audio != null:
-		audio.set_volumes(settings.music / 10.0, settings.sfx / 10.0)
+		if silent:
+			audio.set_volumes(0.0, 0.0)
+		else:
+			audio.set_volumes(settings.music / 10.0, settings.sfx / 10.0)
 	if DisplayServer.get_name() != "headless":
 		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if settings.fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
 		if DisplayServer.window_get_mode() != want:

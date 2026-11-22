@@ -12,12 +12,18 @@ var out_dir := ""
 var main: Node
 ## --gallery=<dir>: generic tour of every registered stage instead of the scripted one.
 var gallery := false
+## --portraits=<dir>: captures each boss (main and hidden) right after its intro,
+## cropped 80x56 around it over its own stage background, mirrored to face right.
+## These become art/portraits/<id>.png (stage select, boss cut-in).
+var portraits := false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	if gallery:
+	if portraits:
+		_portraits.call_deferred()
+	elif gallery:
 		_gallery.call_deferred()
 	else:
 		_tour.call_deferred()
@@ -33,6 +39,55 @@ func _p():
 func _frames(n: int) -> void:
 	for i in n:
 		await get_tree().physics_frame
+
+
+func _portraits() -> void:
+	Game.unlock_all()
+	Game.set_party(["ix"])
+	for s in main.stages:
+		for kind in ["main", "hidden"]:
+			Game.data["cleared"] = main.stages.map(func(st): return st.id).filter(func(id): return id != s.id)
+			Game.data["cleared"].append("hidden_eclipse")
+			main.start_stage(s.id)
+			await _frames(20)
+			if not main.level.has_arena(kind) or s.get("boss" if kind == "main" else "hidden_boss", "") == "":
+				continue
+			if kind == "hidden":
+				Game.data["cleared"] = main.stages.map(func(st): return st.id)
+				if s.get("hidden_id", "") == "fragment":
+					Game.data["cleared"].append("hidden_eclipse")
+			var arena: Rect2 = main.level.arenas[kind].rect
+			await _teleport(Vector2(arena.position.x + 48.0, arena.end.y - 2.0))
+			main._on_boss_trigger(kind)
+			var waited := 0
+			await _frames(60)
+			while main.boss != null and main.boss.get("active") == false and waited < 240:
+				await _frames(1)
+				waited += 1
+			await _frames(3)
+			if main.boss == null:
+				continue
+			main.hud.visible = false
+			main.player.visible = false
+			RenderingServer.force_draw(false)
+			var img := get_viewport().get_texture().get_image()
+			var sp: Vector2 = main.boss.get_global_transform_with_canvas().origin
+			var r := Rect2i(int(sp.x) - 40, int(sp.y) - 32, 80, 56)
+			r.position = r.position.clamp(Vector2i.ZERO, img.get_size() - r.size)
+			var crop := img.get_region(r)
+			crop.convert(Image.FORMAT_RGBA8)
+			crop.flip_x()
+			var id: String = s.id if kind == "main" else s.get("hidden_id", s.id)
+			crop.save_png(out_dir.path_join(id + ".png"))
+			print("portrait: ", id)
+			main.hud.visible = true
+			main.player.visible = true
+			if is_instance_valid(main.boss):
+				main.boss.queue_free()
+			main.boss = null
+			main._in_boss = false
+			await _frames(3)
+	get_tree().quit()
 
 
 func _shot(shot_name: String) -> void:

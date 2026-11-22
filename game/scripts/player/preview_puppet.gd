@@ -11,10 +11,11 @@ var flying := false
 var gliding := false
 var special_kind := ""
 var special_phase := 0
+var facing := 1
 
 
 func visual_facing() -> int:
-	return 1
+	return facing
 
 
 func is_on_floor() -> bool:

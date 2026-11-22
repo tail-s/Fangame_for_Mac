@@ -98,6 +98,8 @@ func _check_requirements() -> void:
 
 func _check_options() -> void:
 	Game.settings = Game.default_settings()
+	_check(Game.settings.music == 0, "music is off by default")
+	Game.settings.music = 7
 	main.show_title()
 	await _frames(3)
 	var ids: Array = main._menu.items.map(func(it): return it.id)

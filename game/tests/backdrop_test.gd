@@ -57,7 +57,9 @@ func test_every_theme_builds() -> void:
 				var prev: Vector2 = layers[i - 1].scroll_scale
 				ordered = ordered and s.x >= prev.x and s.y >= prev.y
 		var repeat_ok := repeating.all(func(l): return l.repeat_size.x >= 384.0 and l.repeat_times >= 2)
-		_check(bs.theme == id and sky_ok and layers.size() >= 3 and repeating.size() >= 2
+		# The title theme never scrolls (no camera), so it needs no repeating layers.
+		var scrolls: bool = id != "title"
+		_check(bs.theme == id and sky_ok and layers.size() >= 3 and (repeating.size() >= 2 or not scrolls)
 				and ordered and gentle and repeat_ok,
 				"%s: sky layer + %d parallax layers (%d repeating), far -> near, small vertical scroll"
 				% [id, layers.size(), repeating.size()])

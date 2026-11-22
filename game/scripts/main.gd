@@ -13,6 +13,10 @@ const Backdrop = preload("res://scripts/level/backdrop.gd")
 const Autoshot = preload("res://scripts/debug/autoshot.gd")
 const StoryScreen = preload("res://scripts/ui/story_screen.gd")
 const Story = preload("res://scripts/story/story_text.gd")
+const StageSelectPanel = preload("res://scripts/ui/stage_select_panel.gd")
+const BossCutin = preload("res://scripts/ui/boss_cutin.gd")
+const TitleHeroes = preload("res://scripts/ui/title_heroes.gd")
+const DepthProps = preload("res://scripts/level/backdrops/depth_props.gd")
 const FlowCheck = preload("res://scripts/debug/flow_check.gd")
 
 const LEVEL_DIR := "res://levels"
@@ -53,11 +57,14 @@ func _ready() -> void:
 	Game.settings_changed.connect(_on_settings_changed)
 	Audio.music_finished.connect(_on_music_finished)
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--autoshot=") or arg.begins_with("--gallery="):
+		if arg.begins_with("--autoshot=") or arg.begins_with("--gallery=") or arg.begins_with("--portraits="):
 			Game.save_enabled = false
 			Game.new_game()
+			Game.silent = true  # automated runs open a window: keep them silent
+			Game.apply_settings()
 			var shot := Autoshot.new()
 			shot.gallery = arg.begins_with("--gallery=")
+			shot.portraits = arg.begins_with("--portraits=")
 			shot.out_dir = arg.split("=", true, 1)[1]
 			shot.main = self
 			add_child(shot)
@@ -129,8 +136,10 @@ func show_title() -> void:
 	items.append({"id": "new", "text": "새 게임", "note": "저장 데이터를 새로 시작합니다" if Game.has_save() else ""})
 	items.append({"id": "options", "text": "옵션", "note": "음량 · 난이도 · 화면 흔들림 · 깜박임 · 조작"})
 	items.append({"id": "quit", "text": "종료"})
-	_show_menu("REBIRTH PROTOCOL", "PROTOTYPE 0.6 · ORIGINAL TEST BUILD", items,
+	get_tree().call_group("backdrop", "set_theme", "title")
+	_show_menu("REBIRTH PROTOCOL", "ORIGINAL FAN-INSPIRED BUILD  —  PROTOTYPE 0.7", items,
 			"↑↓ 선택   Z / Enter 결정", _on_title_choice, Callable())
+	_menu.add_child(TitleHeroes.new())
 	Audio.music("title")
 
 
@@ -272,7 +281,23 @@ func show_select() -> void:
 	items.append({"id": "title", "text": "타이틀로"})
 	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 보스 %d / 6 · 난이도 %s" % [Game.max_hp(),
 			Game.unlocked_count(), bosses_cleared(), Game.DIFFICULTY_NAME[Game.settings.difficulty]],
-			items, "Z 결정   Esc 타이틀", _on_select_choice, show_title)
+			items, "Z 결정   Esc 타이틀", _on_select_choice, show_title, false, 0, "split")
+	# Portrait + EDEN LINK map on the left / under the list (GDD §7-2).
+	var panel := StageSelectPanel.new()
+	for s in stages:
+		var locked: bool = s.has("require") and not requirement_met(s.require)
+		var sig := _hidden_signal(s)
+		panel.entries.append({"kind": "stage", "id": s.id, "name": s.get("name", s.id), "locked": locked,
+				"cleared": Game.is_cleared(s.id), "changed": not locked and not Level.changes_met(s, requirement_met).is_empty(),
+				"signal": "" if sig == "" else ("detected" if sig.contains("감지") else "weak"),
+				"portrait": s.id if s.has("boss") else ""})
+	panel.entries.append({"kind": "lab", "id": "lab", "name": "ARMOR LAB", "locked": false, "cleared": false,
+			"changed": false, "signal": "", "portrait": ""})
+	panel.entries.append({"kind": "title", "id": "title", "name": "타이틀로", "locked": false, "cleared": false,
+			"changed": false, "signal": "", "portrait": ""})
+	_menu.add_child(panel)
+	_menu.highlighted.connect(panel.show_index)
+	panel.show_index(_menu.selected)
 
 
 ## Stage-select row: name plus status marks (✓ cleared, ◈ unknown signal, ▲ changed).
@@ -430,9 +455,10 @@ func _on_pause_choice(id: String) -> void:
 
 
 func _show_menu(title: String, subtitle: String, items: Array, footer: String,
-		on_choice: Callable, on_cancel: Callable, dim := false, selected := 0) -> void:
+		on_choice: Callable, on_cancel: Callable, dim := false, selected := 0, layout := "") -> void:
 	_close_menu()
 	_menu = MenuScreen.new()
+	_menu.layout = layout
 	_menu.selected = selected
 	_menu.title = title
 	_menu.subtitle = subtitle
@@ -656,7 +682,7 @@ func _on_boss_trigger(kind: String) -> void:
 	hud.set_boss_hp(boss.hp, boss.get_max_hp())
 	var bname = boss.get("boss_name")
 	hud.set_boss_name(bname if typeof(bname) == TYPE_STRING else stage.get("name", ""))
-	hud.show_message("WARNING" if kind == "main" else "!! UNKNOWN SIGNAL !!")
+	_boss_cutin(kind, bname if typeof(bname) == TYPE_STRING else stage.get("name", ""))
 	Audio.sfx("door")
 	Audio.sfx("warning")
 	Audio.music("boss_intro")
@@ -672,6 +698,20 @@ func _on_boss_trigger(kind: String) -> void:
 	await get_tree().create_timer(1.4).timeout
 	if gen == _generation and _in_boss and Audio.current_track in ["boss_intro", ""]:
 		Audio.music(_after_intro)
+
+
+## Cut-in band with the boss portrait and name (scripts/ui/boss_cutin.gd).
+func _boss_cutin(kind: String, boss_label: String) -> void:
+	var cut := BossCutin.new()
+	cut.boss_name = boss_label
+	cut.hidden = kind == "hidden"
+	var portrait_id: String = stage.id if kind == "main" else stage.get("hidden_id", "")
+	var path := "res://art/portraits/%s.png" % portrait_id
+	cut.portrait = load(path) if ResourceLoader.exists(path) else null
+	cut.caption = "히든 보스 — 아르카의 기록에 없는 반응" if kind == "hidden" else str(stage.get("desc", ""))
+	var preset: Dictionary = DepthProps.PRESETS.get(stage.id, {})
+	cut.accent = Color(preset.get("light", "3de0ee"))
+	add_child(cut)
 
 
 func _on_music_finished(track: String) -> void:
