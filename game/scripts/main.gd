@@ -13,6 +13,7 @@ const Backdrop = preload("res://scripts/level/backdrop.gd")
 const Autoshot = preload("res://scripts/debug/autoshot.gd")
 const StoryScreen = preload("res://scripts/ui/story_screen.gd")
 const Story = preload("res://scripts/story/story_text.gd")
+const FlowCheck = preload("res://scripts/debug/flow_check.gd")
 
 const LEVEL_DIR := "res://levels"
 ## Sortie choices (GDD §6 tag battle). Characters are original designs.
@@ -57,6 +58,15 @@ func _ready() -> void:
 			shot.out_dir = arg.split("=", true, 1)[1]
 			shot.main = self
 			add_child(shot)
+			return
+		if arg == "--flowcheck" or arg == "--perfcheck":
+			Game.save_enabled = false
+			Game.new_game()
+			Game.load_settings()
+			var check := FlowCheck.new()
+			check.main = self
+			check.perf = arg == "--perfcheck"
+			add_child(check)
 			return
 	Game.load_settings()
 	show_title()

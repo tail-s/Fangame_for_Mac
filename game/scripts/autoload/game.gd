@@ -50,7 +50,7 @@ func default_settings() -> Dictionary:
 ## Loads user://settings.cfg (ignoring bad values) and applies it.
 func load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
+	if save_enabled and cfg.load(SETTINGS_PATH) == OK:
 		var defaults := default_settings()
 		for key in defaults:
 			var v = cfg.get_value("options", key, defaults[key])
