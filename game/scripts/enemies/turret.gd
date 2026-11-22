@@ -44,10 +44,30 @@ func _physics_process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var dome := Color.WHITE if flash > 0.0 else Color("9fb8d6")
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-8, 0), Vector2(8, 0), Vector2(6, -5), Vector2(-6, -5)]), Color("2a3550"))
-	draw_circle(Vector2(0, -7), 5.0, dome)
-	draw_line(Vector2(0, -9), Vector2(0, -9) + aim * 9.0, Color("1c375b"), 3.0)
-	draw_circle(Vector2(0, -8) + aim * 2.0, 1.5, Color("e34f5b"))
+	var w := flash > 0.0
+	var steel := Color.WHITE if w else Color("2c3a62")
+	var steel_hi := Color.WHITE if w else Color("4a5d8f")
+	var bolt := Color.WHITE if w else Color("8ea4c8")
+	# Bolted base with a lighter top strip.
+	draw_colored_polygon(PackedVector2Array([Vector2(-9, 0), Vector2(9, 0), Vector2(7, -5), Vector2(-7, -5)]), steel)
+	draw_rect(Rect2(-7, -5, 14, 1), steel_hi)
+	for bx in [-6.0, 5.0]:
+		draw_rect(Rect2(bx, -3, 1, 1), bolt)
+	# Barrel along the aim, behind the dome; muzzle ring.
+	var pivot := Vector2(0, -9)
+	var tip := pivot + aim * 10.0
+	draw_line(pivot, tip, Color.WHITE if w else Color("1c2a4a"), 4.0)
+	draw_line(pivot + aim * 3.0, tip - aim * 1.0, Color.WHITE if w else Color("3a4f80"), 2.0)
+	draw_circle(tip, 2.2, Color.WHITE if w else Color("101b36"))
+	# Dome: shadowed lower half, base, highlight arc.
+	var dome := Color.WHITE if w else Color("9fb8d6")
+	var dome_dark := Color.WHITE if w else Color("6b84ad")
+	draw_circle(Vector2(0, -7), 5.5, dome_dark)
+	draw_colored_polygon(PackedVector2Array([Vector2(-5.5, -7), Vector2(-4.5, -10.5), Vector2(-1.5, -12.4),
+			Vector2(2, -12.3), Vector2(4.8, -10), Vector2(5.5, -7.5), Vector2(2, -8.5), Vector2(-3, -8.2)]), dome)
+	draw_line(Vector2(-3.5, -11), Vector2(0, -12), Color.WHITE if w else Color("d7edf3"), 1.0)
+	# Sensor eye follows the aim.
+	var eye := Vector2(0, -8) + aim * 2.5
+	draw_circle(eye, 1.8, Color.WHITE if w else Color("e34f5b"))
+	draw_rect(Rect2(eye + Vector2(-0.5, -1.2), Vector2(1, 1)), Color("ffd9dc"))
 	_draw_frozen()
