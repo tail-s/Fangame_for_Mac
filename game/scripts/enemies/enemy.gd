@@ -4,6 +4,8 @@ extends CharacterBody2D
 ## Enemies only collide with the world; the player passes through them and takes
 ## contact damage via its hurtbox.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 signal killed
 
 const Layers = preload("res://scripts/core/layers.gd")
@@ -53,6 +55,7 @@ func take_damage(amount: int, _weapon := "") -> bool:
 	if hp <= 0:
 		_die()
 		return true
+	Autoloads.sfx("enemy_hit")
 	return false
 
 
@@ -69,6 +72,7 @@ func find_player():
 
 
 func _die() -> void:
+	Autoloads.sfx("enemy_die")
 	var fx := Explosion.new()
 	fx.position = position + Vector2(0, -body_size().y / 2.0)
 	get_parent().add_child(fx)

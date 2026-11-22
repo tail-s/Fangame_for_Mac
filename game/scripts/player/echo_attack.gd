@@ -6,6 +6,8 @@ extends RefCounted
 ##   mini   (from walkers) — small body that fits 1-tile gaps, no shooting
 ##   turret (from turrets) — 3-way rapid fire
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 const PlayerShot = preload("res://scripts/combat/player_shot.gd")
 
 const COPY_NAMES := {"mini": "소형체", "turret": "터렛 사격"}
@@ -93,6 +95,7 @@ func _fire() -> void:
 		shot.position = p.position + Vector2(0, -15) + dir * 11.0
 		p.get_parent().add_child(shot)
 	_fire_cd = 0.14 if form == "turret" else 0.09
+	Autoloads.sfx("shoot", 1.25)
 	p.shoot_pose_timer = 0.2
 
 
@@ -102,6 +105,7 @@ func _fire_copy_round() -> void:
 	shot.position = p.position + Vector2(11 * p.visual_facing(), -15)
 	p.get_parent().add_child(shot)
 	_copy_cd = 0.8
+	Autoloads.sfx("shoot_mid", 1.1)
 	p.shoot_pose_timer = 0.3
 
 

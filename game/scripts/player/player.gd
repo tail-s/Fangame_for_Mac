@@ -11,6 +11,8 @@ extends CharacterBody2D
 ## Armor parts change IX's `stats` through apply_loadout() (armor_data.gd).
 ## Units are pixels and seconds at 60 Hz; the origin is at the feet.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 signal hp_changed(hp: int, max_hp: int)
 signal core_changed(core: float, core_max: float)
 signal character_changed(id: String)
@@ -120,6 +122,8 @@ var scripted := false
 ## Debug only (screenshot tour): ignore damage and death.
 var god_mode := false
 var control_lock := 0.0
+## Difficulty option: damage taken is multiplied by this (Game.damage_taken_mult()).
+var damage_taken_mult := 1.0
 var in_dir := 0
 var in_up := false
 var in_down := false
@@ -220,7 +224,11 @@ func _physics_process(delta: float) -> void:
 				swap()
 	_regen_core(delta)
 	_regen_partner(delta)
+	var was_floor := is_on_floor()
+	var fall_speed := velocity.y
 	move_and_slide()
+	if not was_floor and is_on_floor() and fall_speed > 150.0 and state != State.DEAD:
+		Autoloads.sfx("land")
 	if state == State.SPECIAL:
 		_special_after_move()
 	if global_position.y > kill_y:
@@ -262,6 +270,7 @@ func swap() -> void:
 	swap_cooldown = SWAP_COOLDOWN
 	invuln_timer = maxf(invuln_timer, 0.3)
 	_puff(Color("3de0ee"))
+	Autoloads.sfx("tag")
 	if combo:
 		last_hit_time = -10.0
 		_start_special("tag_strike")
@@ -381,8 +390,10 @@ func take_damage(amount: int, from_x: float) -> void:
 		scaled *= stats.dash_damage_mult
 	if not is_on_floor():
 		scaled *= stats.air_damage_mult
+	scaled *= damage_taken_mult
 	hp = maxi(hp - maxi(1, ceili(scaled)), 0)
 	hp_changed.emit(hp, max_hp)
+	Autoloads.sfx("hurt")
 	if hp == 0:
 		_character_down()
 		return
@@ -443,6 +454,8 @@ func die() -> void:
 	if god_mode or state == State.DEAD:
 		return
 	state = State.DEAD
+	Autoloads.sfx("death")
+	get_tree().call_group("shaker", "shake", 3.0, 0.35)
 	hp = 0
 	for c in party:
 		c.hp = 0
@@ -733,6 +746,7 @@ func _process_attack(delta: float) -> void:
 		return
 	if (wprev_pressed or wnext_pressed) and weapons.size() > 1:
 		weapon_index = (weapon_index + (1 if wnext_pressed else -1) + weapons.size()) % weapons.size()
+		Autoloads.sfx("weapon_switch")
 		charging = false
 		charge_time = 0.0
 	if special_pressed and special_ready():
@@ -748,7 +762,12 @@ func _process_attack(delta: float) -> void:
 		charging = true
 		charge_time = 0.0
 	elif charging and in_shoot:
+		var before := charge_time
 		charge_time += delta
+		if before < charge_lv1_time and charge_time >= charge_lv1_time:
+			Autoloads.sfx("charge")
+		elif before < charge_lv2_time and charge_time >= charge_lv2_time:
+			Autoloads.sfx("charge_full")
 	elif charging:
 		charging = false
 		if charge_time >= charge_lv2_time:
@@ -799,6 +818,8 @@ func _check_damage() -> void:
 # --- specials (full armor sets, tag combo) --------------------------------------------------
 
 func _start_special(kind: String) -> void:
+	Autoloads.sfx("special")
+	get_tree().call_group("shaker", "shake", 2.0, 0.25)
 	state = State.SPECIAL
 	special_kind = kind
 	special_phase = 0
@@ -904,6 +925,7 @@ func _recompute_stats() -> void:
 
 
 func _start_dash(air: bool) -> void:
+	Autoloads.sfx("dash")
 	state = State.DASH
 	air_dashing = air
 	dash_dir = in_dir if in_dir != 0 else facing
@@ -933,6 +955,7 @@ func _grant_dual_core() -> void:
 
 
 func _jump() -> void:
+	Autoloads.sfx("jump")
 	velocity.y = -jump_velocity * (0.85 if mini else 1.0) * (1.12 if _zone == "water" else 1.0)
 	jump_buffer_timer = 0.0
 	coyote_timer = 0.0
@@ -945,6 +968,7 @@ func _jump() -> void:
 
 
 func _wall_kick() -> void:
+	Autoloads.sfx("wall_kick")
 	velocity.y = -jump_velocity
 	jump_buffer_timer = 0.0
 	dash_momentum = in_dash
@@ -975,6 +999,7 @@ func _fire(level: int) -> void:
 		shot.plasma = stats.plasma and level == 2
 		shot.position = origin
 		get_parent().add_child(shot)
+	Autoloads.sfx(["shoot", "shoot_mid", "shoot_full"][level])
 	shoot_pose_timer = 0.3
 
 
@@ -985,6 +1010,7 @@ func _fire_weapon(id: String) -> void:
 	if get_tree().get_nodes_in_group("weapon_" + id).size() >= info.max:
 		return
 	weapon_energy[id] -= info.cost
+	Autoloads.sfx("weapon_fire")
 	var dir := visual_facing()
 	var shot := WeaponShot.new()
 	shot.setup(id, dir, self)

@@ -39,7 +39,7 @@ const EMITTERS := {
 }
 ## Map chars that are solid for collision (cracked walls, doors, crumbling and
 ## moving blocks have their own bodies).
-const SOLID_CHARS := ["#", ">", "<", "v", "u", "i", "e"]
+const SOLID_CHARS := ["#", ">", "<", "v", "u", "i", "e", "g"]
 ## Non-solid zones the player reacts to (see player.gd _zone_effects).
 const ZONES := {"~": "water", "z": "lowg", "|": "lift"}
 const ARENA_MARKERS := {
@@ -64,6 +64,11 @@ var lasers: Array = []
 ##          "door": StaticBody2D, "door_rect": Rect2, "closed": bool}
 var arenas := {}
 var reveal := false
+## `func(req: String) -> bool` used for `; @alt` / `; @change` lines (GDD §5-4
+## cross-stage changes). Unset = every requirement unmet (original layout).
+var condition := Callable()
+## `; @change` texts whose requirement is met for this load.
+var active_changes: Array = []
 
 # Main-arena shortcuts kept for older code / tests.
 var boss_spawn := Vector2.INF
@@ -88,15 +93,32 @@ static func load_registry(dir: String) -> Array:
 	return out
 
 
+## Repeatable keys `alt` and `change` are collected into the arrays `alts` and
+## `changes` (one entry per line); every other key keeps its last value.
 static func parse_meta(text: String) -> Dictionary:
-	var out := {}
+	var out := {"alts": [], "changes": []}
 	for raw in text.split("\n"):
 		var line := raw.strip_edges()
 		if line.begins_with("; @"):
 			var body := line.substr(3)
 			var space := body.find(" ")
 			if space > 0:
-				out[body.substr(0, space)] = body.substr(space + 1).strip_edges()
+				var key := body.substr(0, space)
+				var value := body.substr(space + 1).strip_edges()
+				if key == "alt" or key == "change":
+					out[key + "s"].append(value)
+				else:
+					out[key] = value
+	return out
+
+
+## `; @change <requirement> <text>` lines of a stage whose requirement `check` meets.
+static func changes_met(m: Dictionary, check: Callable) -> Array:
+	var out := []
+	for line in m.get("changes", []):
+		var space: int = line.find(" ")
+		if space > 0 and check.is_valid() and check.call(line.substr(0, space)):
+			out.append(line.substr(space + 1).strip_edges())
 	return out
 
 
@@ -114,11 +136,27 @@ func load_from_text(text: String) -> void:
 		rows.append(line)
 	while rows.size() > 0 and rows[rows.size() - 1].strip_edges().is_empty():
 		rows.remove_at(rows.size() - 1)
+	_apply_alts()
+	active_changes = changes_met(meta, condition)
 	height = rows.size()
 	width = 0
 	for r in rows:
 		width = maxi(width, r.length())
 	_build()
+
+
+## `; @alt <char> <requirement> <before> <after>`: every <char> in the map
+## becomes <after> when the requirement is met, otherwise <before>.
+func _apply_alts() -> void:
+	for line in meta.get("alts", []):
+		var bits: PackedStringArray = line.split(" ", false)
+		if bits.size() < 4 or bits[0].length() != 1:
+			push_warning("bad @alt line: " + line)
+			continue
+		var met: bool = condition.is_valid() and condition.call(bits[1])
+		var to: String = bits[3] if met else bits[2]
+		for i in rows.size():
+			rows[i] = rows[i].replace(bits[0], to)
 
 
 func pixel_size() -> Vector2:
@@ -467,6 +505,8 @@ func _draw() -> void:
 			match c:
 				"#", "e":
 					_draw_solid(x, y, pos)
+				"g":
+					_draw_gate(x, y, pos)
 				"i":
 					_draw_ice(x, y, pos)
 				"^":
@@ -545,6 +585,18 @@ func _draw_fake(x: int, y: int, pos: Vector2) -> void:
 func _looks_solid(x: int, y: int) -> bool:
 	var c := cell(x, y)
 	return is_solid(x, y) or (c == "f" and not reveal)
+
+
+## Sealed gate: solid until a cross-stage change opens it (see `; @alt`).
+func _draw_gate(x: int, y: int, pos: Vector2) -> void:
+	draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("2a2f45"))
+	for i in 3:
+		var bx := pos.x + 1 + i * 5 + (y % 2) * 2
+		draw_line(Vector2(bx, pos.y + TILE), Vector2(minf(bx + 4, pos.x + TILE), pos.y), Color("efcf5f", 0.55), 2.0)
+	draw_rect(Rect2(pos + Vector2(0.5, 0.5), Vector2(TILE - 1, TILE - 1)), Color("efcf5f", 0.8), false, 1.0)
+	if cell(x, y - 1) != "g":
+		draw_rect(Rect2(pos + Vector2(5, 4), Vector2(6, 5)), Color("e34f5b"))
+		draw_rect(Rect2(pos + Vector2(6, 1), Vector2(4, 4)), Color("e34f5b"), false, 1.0)
 
 
 func _draw_spikes(pos: Vector2) -> void:

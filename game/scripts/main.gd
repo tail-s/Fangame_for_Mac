@@ -36,12 +36,18 @@ var _story: CanvasLayer
 var _in_boss := false
 var _boss_kind := ""
 var _generation := 0  # bumps on every (re)load so stale timers do nothing
+var _shake_time := 0.0
+var _shake_total := 0.0
+var _shake_strength := 0.0
+var _last_hp := -1
 
 
 func _ready() -> void:
 	stages = load_stage_registry()
+	add_to_group("shaker")
 	_build_backdrop()
 	Game.loadout_changed.connect(_on_loadout_changed)
+	Game.settings_changed.connect(_on_settings_changed)
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--autoshot=") or arg.begins_with("--gallery="):
 			Game.save_enabled = false
@@ -52,7 +58,28 @@ func _ready() -> void:
 			shot.main = self
 			add_child(shot)
 			return
+	Game.load_settings()
 	show_title()
+
+
+func _process(delta: float) -> void:
+	if _cam == null or not is_instance_valid(_cam):
+		return
+	if _shake_time > 0.0:
+		_shake_time = maxf(_shake_time - delta, 0.0)
+		var k := _shake_strength * _shake_time / _shake_total
+		_cam.offset = Vector2(randf_range(-k, k), randf_range(-k, k)).round()
+	elif _cam.offset != Vector2.ZERO:
+		_cam.offset = Vector2.ZERO
+
+
+## Screen shake (off when the "shake" option is off). Called through the "shaker" group.
+func shake(strength: float, seconds: float) -> void:
+	if not Game.settings.shake or strength * seconds < _shake_strength * _shake_time:
+		return
+	_shake_strength = strength
+	_shake_time = seconds
+	_shake_total = seconds
 
 
 func _physics_process(_delta: float) -> void:
@@ -87,9 +114,92 @@ func show_title() -> void:
 	if Game.has_save():
 		items.append({"id": "continue", "text": "이어하기"})
 	items.append({"id": "new", "text": "새 게임", "note": "저장 데이터를 새로 시작합니다" if Game.has_save() else ""})
+	items.append({"id": "options", "text": "옵션", "note": "음량 · 난이도 · 화면 흔들림 · 깜박임 · 조작"})
 	items.append({"id": "quit", "text": "종료"})
-	_show_menu("REBIRTH PROTOCOL", "PROTOTYPE 0.1 · ORIGINAL TEST BUILD", items,
+	_show_menu("REBIRTH PROTOCOL", "PROTOTYPE 0.6 · ORIGINAL TEST BUILD", items,
 			"↑↓ 선택   Z / Enter 결정", _on_title_choice, Callable())
+	Audio.music("title")
+
+
+# --- options (GDD §8-2 phase 6: accessibility) --------------------------------------
+
+const OPTION_IDS := ["music", "sfx", "difficulty", "shake", "flashes", "fullscreen"]
+
+
+func show_options(back: Callable) -> void:
+	var items := []
+	for id in OPTION_IDS:
+		var row := _option_row(id)
+		items.append({"id": id, "text": row[0], "note": row[1], "adjust": true})
+	items.append({"id": "controls", "text": "조작 안내", "note": "키보드 · 게임패드 버튼 목록"})
+	items.append({"id": "back", "text": "돌아가기"})
+	_show_menu("OPTIONS", "← → 값 변경 · 자동 저장", items, "Z 결정   Esc 돌아가기",
+			_on_option_choice.bind(back), back, level != null)
+	_menu.adjusted.connect(_on_option_adjust)
+
+
+func _option_row(id: String) -> Array:
+	var s: Dictionary = Game.settings
+	match id:
+		"music":
+			return ["음악 음량   ◀ %s ▶" % _bar(s.music), "0 이면 음악을 끕니다"]
+		"sfx":
+			return ["효과음 음량   ◀ %s ▶" % _bar(s.sfx), "0 이면 효과음을 끕니다"]
+		"difficulty":
+			return ["난이도   ◀ %s ▶" % Game.DIFFICULTY_NAME[s.difficulty],
+					"받는 피해 ×%s — 언제든 바꿀 수 있습니다" % str(Game.DIFFICULTY_DAMAGE[s.difficulty])]
+		"shake":
+			return ["화면 흔들림   ◀ %s ▶" % ("켜기" if s.shake else "끄기"), "폭발·피격 때 화면이 흔들립니다"]
+		"flashes":
+			return ["밝은 깜박임   ◀ %s ▶" % ("켜기" if s.flashes else "줄이기"),
+					"피격 섬광·번개 등 밝은 깜박임을 줄입니다"]
+		"fullscreen":
+			return ["전체 화면   ◀ %s ▶" % ("켜기" if s.fullscreen else "끄기"), "창 모드 / 전체 화면"]
+	return [id, ""]
+
+
+func _bar(v: int) -> String:
+	return "■".repeat(v) + "□".repeat(10 - v)
+
+
+func _on_option_adjust(id: String, dir: int) -> void:
+	var s: Dictionary = Game.settings
+	match id:
+		"music", "sfx":
+			Game.set_setting(id, clampi(s[id] + dir, 0, 10))
+			if id == "sfx":
+				Audio.sfx("pickup")
+		"difficulty":
+			var i := Game.DIFFICULTIES.find(s.difficulty)
+			Game.set_setting(id, Game.DIFFICULTIES[clampi(i + dir, 0, Game.DIFFICULTIES.size() - 1)])
+		"shake", "flashes", "fullscreen":
+			Game.set_setting(id, not s[id])
+	var row := _option_row(id)
+	if _menu != null:
+		_menu.update_item(id, row[0], row[1])
+
+
+func _on_option_choice(id: String, back: Callable) -> void:
+	if OPTION_IDS.has(id):
+		_on_option_adjust(id, 1)
+	elif id == "controls":
+		_show_controls(back)
+	else:
+		back.call()
+
+
+func _show_controls(back: Callable) -> void:
+	var rows := [
+		["이동", "← →  /  스틱 · 십자키"], ["점프", "Z · Space  /  A"], ["공격 (길게: 차지)", "X · J  /  X"],
+		["대시", "C · K · Shift  /  B"], ["필살기", "V · L  /  Y"], ["특수무기 전환", "Q · E  /  LB · RB"],
+		["캐릭터 교대 · 태그", "Tab · F  /  LT"], ["아머 랩 (체크포인트)", "↑"], ["일시정지", "Esc · P  /  Start"],
+		["체크포인트부터 다시", "R  /  Back"],
+	]
+	var items := []
+	for r in rows:
+		items.append({"id": "back", "text": r[0], "note": r[1]})
+	_show_menu("CONTROLS", "↑↓ 로 항목을 고르면 아래에 키가 표시됩니다", items, "Z / Esc 돌아가기",
+			func(_id: String) -> void: show_options(back), show_options.bind(back), level != null)
 
 
 static func load_stage_registry() -> Array:
@@ -105,12 +215,15 @@ func bosses_cleared() -> int:
 	return n
 
 
-## `bosses:N` and/or `+eclipse` / `+fragment`.
+## `bosses:N`, `cleared:<stage id>` and/or `+eclipse` / `+fragment`, joined by `+`.
 func requirement_met(req: String) -> bool:
 	for part in req.split("+", false):
 		part = part.strip_edges()
 		if part.begins_with("bosses:"):
 			if bosses_cleared() < int(part.substr(7)):
+				return false
+		elif part.begins_with("cleared:"):
+			if not Game.is_cleared(part.substr(8)):
 				return false
 		elif part != "" and not Game.is_cleared("hidden_" + part):
 			return false
@@ -118,8 +231,9 @@ func requirement_met(req: String) -> bool:
 
 
 ## Shows story pages, then calls `then`.
-func play_story(pages: Array, then: Callable) -> void:
+func play_story(pages: Array, then: Callable, track := "story") -> void:
 	_leave_stage()
+	Audio.music(track)
 	_story = StoryScreen.new()
 	_story.pages = pages
 	_story.finished.connect(func() -> void:
@@ -135,20 +249,52 @@ func show_select() -> void:
 		Game.set_flag("mid_event")
 		play_story(Story.MID_EVENT, show_select)
 		return
+	Audio.music("select")
 	var items := []
 	for s in stages:
 		var locked: bool = s.has("require") and not requirement_met(s.require)
-		var note: String = s.get("desc", "")
-		if locked:
-			note = "🔒 " + _requirement_text(s.require)
-		elif Game.is_cleared(s.id):
-			note += "   ✓ CLEAR"
-		items.append({"id": "locked" if locked else s.id, "text": s.get("name", s.id), "note": note})
+		items.append({"id": "locked" if locked else s.id, "text": _select_title(s, locked),
+				"note": _select_note(s, locked)})
 	items.append({"id": "lab", "text": "ARMOR LAB", "note": "파츠 %d / 8 · 장착 · 프리셋" % Game.unlocked_count()})
 	items.append({"id": "title", "text": "타이틀로"})
 	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 보스 %d / 6" % [Game.max_hp(),
 			Game.unlocked_count(), bosses_cleared()],
 			items, "Z 결정   Esc 타이틀", _on_select_choice, show_title)
+
+
+## Stage-select row: name plus status marks (✓ cleared, ◈ unknown signal, ▲ changed).
+func _select_title(s: Dictionary, locked: bool) -> String:
+	var text: String = s.get("name", s.id)
+	if locked:
+		return text + "  (LOCKED)"
+	if Game.is_cleared(s.id):
+		text += "  ✓"
+	if _hidden_signal(s) != "":
+		text += "  ◈"
+	if not Level.changes_met(s, requirement_met).is_empty():
+		text += "  ▲"
+	return text
+
+
+func _select_note(s: Dictionary, locked: bool) -> String:
+	if locked:
+		return "LOCKED — " + _requirement_text(s.require)
+	var bits: Array = [s.get("desc", "")]
+	for change in Level.changes_met(s, requirement_met):
+		bits.append("▲ 환경 변화: " + change)
+	var signal_text := _hidden_signal(s)
+	if signal_text != "":
+		bits.append(signal_text)
+	return "   ".join(bits)
+
+
+## GDD §5-4: stages with a hidden route show an "unknown signal" until it is cleared.
+func _hidden_signal(s: Dictionary) -> String:
+	if not s.has("hidden_boss") or Game.is_cleared("hidden_" + s.get("hidden_id", "")):
+		return ""
+	if requirement_met(s.get("hidden_require", "")):
+		return "◈ 미확인 신호 감지"
+	return "◈ 미확인 신호 (약함)"
 
 
 func _requirement_text(req: String) -> String:
@@ -157,9 +303,18 @@ func _requirement_text(req: String) -> String:
 		part = part.strip_edges()
 		if part.begins_with("bosses:"):
 			bits.append("보스 %d명 격파 필요" % int(part.substr(7)))
+		elif part.begins_with("cleared:"):
+			bits.append("%s 격파 필요" % _stage_name(part.substr(8)))
 		elif part != "":
 			bits.append("히든 보스 필요")
 	return " · ".join(bits)
+
+
+func _stage_name(id: String) -> String:
+	for s in stages:
+		if s.id == id:
+			return s.get("name", id)
+	return id
 
 
 func open_lab() -> void:
@@ -187,6 +342,7 @@ func _open_pause() -> void:
 	_show_menu("PAUSE", stage.get("name", ""), [
 		{"id": "resume", "text": "계속하기"},
 		{"id": "retry", "text": "체크포인트부터 다시"},
+		{"id": "options", "text": "옵션"},
 		{"id": "exit", "text": "스테이지 나가기"},
 	], "Esc 계속", _on_pause_choice, _resume, true)
 
@@ -205,6 +361,8 @@ func _on_title_choice(id: String) -> void:
 			Game.new_game()
 			Game.save_game()
 			play_story(Story.PROLOGUE, show_select)
+		"options":
+			show_options(show_title)
 		"quit":
 			get_tree().quit()
 
@@ -252,6 +410,8 @@ func _on_pause_choice(id: String) -> void:
 		"retry":
 			_resume()
 			load_level()
+		"options":
+			show_options(_open_pause)
 		"exit":
 			show_select()
 
@@ -291,6 +451,7 @@ func start_stage(id: String) -> void:
 
 func load_level() -> void:
 	_generation += 1
+	_last_hp = -1
 	_in_boss = false
 	boss = null
 	get_tree().paused = false
@@ -305,6 +466,7 @@ func load_level() -> void:
 
 	level = Level.new()
 	level.stage_id = stage.id
+	level.condition = requirement_met
 	level.collected = Game.data["collected"] + Game.data["unlocked"]
 	add_child(level)
 	level.load_from_file(stage.path)
@@ -329,6 +491,8 @@ func load_level() -> void:
 	player.apply_loadout(Game.loadout())
 	player.set_frame(Game.data.get("frame", "parts") if Game.is_ultimate() else "parts")
 	player.notice.connect(func(text: String) -> void: hud.toast(text, 1.6))
+	player.damage_taken_mult = Game.damage_taken_mult()
+	player.hp_changed.connect(_on_player_hp)
 	player.kill_y = level.pixel_size().y + 48.0
 	player.reset_physics_interpolation()
 	player.hp_changed.connect(hud.set_hp)
@@ -349,6 +513,27 @@ func load_level() -> void:
 	player.add_child(_cam)
 	_cam.make_current()
 	_cam.reset_smoothing()
+	_shake_time = 0.0
+
+	Audio.music(stage.id if Audio.TRACKS.has(stage.id) else "training")
+	_flash_ready()
+	if not level.active_changes.is_empty():
+		hud.toast("▲ 환경 변화\n" + "\n".join(level.active_changes), 3.5)
+
+
+## Stage start / respawn banner.
+func _flash_ready() -> void:
+	var gen := _generation
+	hud.show_message("READY")
+	await get_tree().create_timer(1.1).timeout
+	if gen == _generation and hud != null and not _in_boss:
+		hud.show_message("")
+
+
+func _on_player_hp(hp: int, _max_hp: int) -> void:
+	if _last_hp >= 0 and hp < _last_hp:
+		shake(2.0, 0.18)
+	_last_hp = hp
 
 
 ## True while the player stands still at an activated checkpoint (safe zone).
@@ -391,6 +576,13 @@ func _set_camera_limits(r: Rect2) -> void:
 	_cam.limit_bottom = int(r.end.y)
 
 
+func _on_settings_changed() -> void:
+	if player != null and is_instance_valid(player):
+		player.damage_taken_mult = Game.damage_taken_mult()
+	for b in get_tree().get_nodes_in_group("backdrop"):
+		b.set("flashes_enabled", Game.settings.flashes)
+
+
 func _on_loadout_changed() -> void:
 	if player != null and is_instance_valid(player):
 		player.apply_loadout(Game.loadout())
@@ -406,6 +598,7 @@ func _on_checkpoint(pos: Vector2) -> void:
 
 
 func _on_pickup(pk) -> void:
+	Audio.sfx("capsule" if pk.kind == "part" else "heal")
 	if pk.kind == "part":
 		Game.unlock(pk.part_id)
 		hud.toast("%s 획득!\n%s\n체크포인트에서 ↑ 로 장착" % [ArmorData.part_name(pk.part_id),
@@ -449,10 +642,17 @@ func _on_boss_trigger(kind: String) -> void:
 	var bname = boss.get("boss_name")
 	hud.set_boss_name(bname if typeof(bname) == TYPE_STRING else stage.get("name", ""))
 	hud.show_message("WARNING" if kind == "main" else "!! UNKNOWN SIGNAL !!")
+	Audio.sfx("door")
+	Audio.sfx("warning")
+	Audio.music("boss_intro")
 	var gen := _generation
 	await get_tree().create_timer(1.4).timeout
 	if gen == _generation and hud != null:
 		hud.show_message("")
+		if kind == "hidden":
+			Audio.music("hidden_boss")
+		else:
+			Audio.music("final_boss" if stage.get("final", "") == "true" else "boss")
 
 
 func _on_boss_defeated() -> void:
@@ -476,6 +676,8 @@ func _on_hidden_defeated() -> void:
 	_set_camera_limits(Rect2(Vector2.ZERO, level.pixel_size()))
 	level.open_door("hidden")
 	_reward_hidden(hid)
+	Audio.sfx("capsule")
+	Audio.music(stage.id if Audio.TRACKS.has(stage.id) else "training")
 
 
 ## Hidden boss rewards (GDD v0.2 §5-3): Eclipse -> Ultimate Armor IX,
@@ -509,6 +711,7 @@ func _finish_stage(text: String) -> void:
 	player.freeze()
 	hud.show_message(text)
 	Game.mark_cleared(stage.id)
+	Audio.music("stage_clear")
 	await get_tree().create_timer(CLEAR_DELAY).timeout
 	if gen != _generation:
 		return
@@ -517,7 +720,7 @@ func _finish_stage(text: String) -> void:
 		Game.set_flag("ending_" + kind)
 		var pages: Array = {"normal": Story.ENDING_NORMAL, "extended": Story.ENDING_EXTENDED,
 				"true": Story.ENDING_TRUE}[kind]
-		play_story(pages + Story.CREDITS, show_select)
+		play_story(pages + Story.CREDITS, show_select, "ending")
 	else:
 		show_select()
 

@@ -1,6 +1,8 @@
 extends Node2D
 ## Short-lived burst used for hits, enemy deaths and the player's death.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 var big := false
 var size := 12.0
 var duration := 0.35
@@ -12,6 +14,7 @@ func _ready() -> void:
 	if big:
 		size = 30.0
 		duration = 0.9
+		Autoloads.sfx("big_explosion")
 
 
 func _process(delta: float) -> void:

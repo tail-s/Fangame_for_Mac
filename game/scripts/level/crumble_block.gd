@@ -2,6 +2,8 @@ extends StaticBody2D
 ## Crumbling floor ('c', one object per horizontal run): shakes for SHAKE seconds
 ## after the player stands on it, falls away, and returns after RESPAWN seconds.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 const Layers = preload("res://scripts/core/layers.gd")
 const SHAKE := 0.5
 const RESPAWN := 4.0
@@ -35,6 +37,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if _timer < 0.0 and _player_on_top():
 		_timer = SHAKE
+		Autoloads.sfx("crumble")
 	if _timer >= 0.0:
 		_timer -= delta
 		if _timer < 0.0:

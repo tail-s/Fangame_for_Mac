@@ -2,6 +2,8 @@ extends CanvasLayer
 ## Full-screen story pages (prologue, mid event, endings). Z / Enter: next page
 ## (finishes the typing first), Esc: skip. Emits `finished` after the last page.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 signal finished
 
 const C_TEXT := Color("d7edf3")
@@ -41,14 +43,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var total := _body.text.length()
 	if _shown < total:
+		var before := int(_shown)
 		_shown = minf(_shown + CHARS_PER_SEC * delta, total)
 		_body.visible_characters = int(_shown)
+		if int(_shown) / 3 != before / 3:
+			Autoloads.sfx("text")
 	if _guard > 0:
 		_guard -= 1
 		return
 	if Input.is_action_just_pressed("cancel"):
 		finished.emit()
 	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("shoot"):
+		Autoloads.sfx("menu_ok")
 		if _shown < total:
 			_shown = total
 			_body.visible_characters = -1

@@ -7,6 +7,8 @@ extends RefCounted
 ##   1 파쇄류 crush   — slow heavy swings, the 3rd hit breaks cracked walls
 ##   2 반격류 counter — long parry window, strong counter
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 const Layers = preload("res://scripts/core/layers.gd")
 
 enum Swing { NONE, COMBO1, COMBO2, COMBO3, AIR, DASH, WALL, COUNTER }
@@ -88,6 +90,7 @@ func try_parry() -> bool:
 	parry_t = 0.0
 	_start(Swing.COUNTER)
 	p.invuln_timer = maxf(p.invuln_timer, 0.4)
+	Autoloads.sfx("parry")
 	p.notice.emit("PARRY!")
 	return true
 
@@ -138,6 +141,7 @@ func damage() -> int:
 
 
 func _start(s: int) -> void:
+	Autoloads.sfx("saber_heavy" if s in [Swing.COMBO3, Swing.COUNTER, Swing.DASH] else "saber")
 	swing = s
 	swing_t = 0.0
 	queued = false

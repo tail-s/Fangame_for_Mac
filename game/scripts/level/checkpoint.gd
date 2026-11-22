@@ -1,6 +1,8 @@
 extends Area2D
 ## Respawn point. Lights up when the player touches it.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 signal reached(pos: Vector2)
 
 const Layers = preload("res://scripts/core/layers.gd")
@@ -28,6 +30,7 @@ func activate(announce := true) -> void:
 		return
 	active = true
 	if announce:
+		Autoloads.sfx("checkpoint")
 		reached.emit(global_position)
 	queue_redraw()
 

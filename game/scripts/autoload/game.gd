@@ -3,6 +3,7 @@ extends Node
 ## the in-stage checkpoint, and the stats of the equipped loadout.
 
 signal loadout_changed
+signal settings_changed
 
 const InputSetup = preload("res://scripts/core/input_setup.gd")
 const ArmorData = preload("res://scripts/armor/armor_data.gd")
@@ -15,6 +16,13 @@ const SAVE_VERSION := 1
 const PRESET_COUNT := 3
 const BASE_HP := 16
 
+## Options (separate from the save slot, GDD §8-2 phase 6 accessibility).
+const SETTINGS_PATH := "user://settings.cfg"
+const DIFFICULTIES := ["easy", "normal", "hard"]
+const DIFFICULTY_NAME := {"easy": "쉬움", "normal": "보통", "hard": "어려움"}
+## Damage the player takes is multiplied by this.
+const DIFFICULTY_DAMAGE := {"easy": 0.5, "normal": 1.0, "hard": 1.5}
+
 var save_path := "user://save.json"
 ## Debug / test runs turn this off so they never touch the player's save file.
 var save_enabled := true
@@ -24,11 +32,65 @@ var stats := {}
 var checkpoint := Vector2.ZERO
 var has_checkpoint := false
 var deaths := 0
+var settings := default_settings()
 
 
 func _ready() -> void:
 	InputSetup.register()
 	new_game()
+
+
+# --- options ------------------------------------------------------------------
+
+func default_settings() -> Dictionary:
+	return {"music": 7, "sfx": 8, "difficulty": "normal", "shake": true, "flashes": true,
+			"fullscreen": false}
+
+
+## Loads user://settings.cfg (ignoring bad values) and applies it.
+func load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		var defaults := default_settings()
+		for key in defaults:
+			var v = cfg.get_value("options", key, defaults[key])
+			if typeof(v) == typeof(defaults[key]):
+				settings[key] = v
+		settings.music = clampi(settings.music, 0, 10)
+		settings.sfx = clampi(settings.sfx, 0, 10)
+		if not DIFFICULTIES.has(settings.difficulty):
+			settings.difficulty = "normal"
+	apply_settings()
+
+
+func save_settings() -> void:
+	if not save_enabled:
+		return
+	var cfg := ConfigFile.new()
+	for key in settings:
+		cfg.set_value("options", key, settings[key])
+	cfg.save(SETTINGS_PATH)
+
+
+func set_setting(key: String, value) -> void:
+	settings[key] = value
+	apply_settings()
+	save_settings()
+
+
+func apply_settings() -> void:
+	var audio := get_node_or_null("/root/Audio")
+	if audio != null:
+		audio.set_volumes(settings.music / 10.0, settings.sfx / 10.0)
+	if DisplayServer.get_name() != "headless":
+		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if settings.fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
+		if DisplayServer.window_get_mode() != want:
+			DisplayServer.window_set_mode(want)
+	settings_changed.emit()
+
+
+func damage_taken_mult() -> float:
+	return DIFFICULTY_DAMAGE.get(settings.difficulty, 1.0)
 
 
 # --- save file ------------------------------------------------------------------

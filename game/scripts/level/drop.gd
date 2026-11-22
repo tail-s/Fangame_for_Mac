@@ -1,6 +1,8 @@
 extends Area2D
 ## Small capsule dropped by enemies: "hp" heals 3, "energy" refills 6 weapon energy.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 const Layers = preload("res://scripts/core/layers.gd")
 
 var kind := "hp"
@@ -48,6 +50,7 @@ func _on_body_entered(body: Node) -> void:
 		body.heal(3)
 	else:
 		body.add_weapon_energy(6.0)
+	Autoloads.sfx("pickup")
 	queue_free()
 
 

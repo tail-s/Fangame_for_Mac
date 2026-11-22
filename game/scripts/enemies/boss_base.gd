@@ -13,6 +13,8 @@ extends CharacterBody2D
 ## Subclasses set the tunables below in _init() and override the hooks.
 ## Bosses move kinematically (set `position` directly) and stay inside `arena`.
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 signal hp_changed(hp: int, max_hp: int)
 signal defeated
 
@@ -85,9 +87,11 @@ func take_damage(amount: int, weapon := "") -> bool:
 		if _stagger_cd <= 0.0:
 			_stagger_cd = stagger_cooldown
 			_on_stagger()
+	var weak := weakness != "" and weapon == weakness
 	amount = _modify_damage(amount, weapon)
 	if amount <= 0:
 		return false
+	Autoloads.sfx("weak_hit" if weak else "boss_hit")
 	hp = maxi(hp - amount, 0)
 	_flash = 0.08
 	_invuln = 0.08
@@ -121,7 +125,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _draw() -> void:
-	_boss_draw(_flash > 0.0 and int(t * 30.0) % 2 == 0)
+	# "Reduce flashes" option: no white strobe, a short dim instead.
+	var flashes: bool = Autoloads.flashes()
+	self_modulate.a = 0.6 if _flash > 0.0 and not flashes else 1.0
+	_boss_draw(flashes and _flash > 0.0 and int(t * 30.0) % 2 == 0)
 
 
 # --- hooks to override ---------------------------------------------------------
@@ -216,6 +223,9 @@ func clamp_to_arena(margin: float) -> void:
 
 
 func _start_death() -> void:
+	var audio := Autoloads.node("Audio")
+	if audio != null:
+		audio.stop_music()
 	active = false
 	_dying = death_time
 	for s in get_tree().get_nodes_in_group("enemy_shot"):
@@ -233,5 +243,6 @@ func _process_death(delta: float) -> void:
 		e.big = true
 		e.position = position
 		get_parent().add_child(e)
+		get_tree().call_group("shaker", "shake", 4.0, 0.6)
 		defeated.emit()
 		queue_free()

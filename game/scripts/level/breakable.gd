@@ -1,6 +1,8 @@
 extends StaticBody2D
 ## Cracked wall ('x'). Solid until hit by a breaker shot (Vanguard ARM charge).
 
+const Autoloads = preload("res://scripts/core/autoloads.gd")
+
 const Layers = preload("res://scripts/core/layers.gd")
 const Explosion = preload("res://scripts/fx/explosion.gd")
 const TILE := 16
@@ -29,6 +31,7 @@ func _ready() -> void:
 func break_wall() -> void:
 	if is_queued_for_deletion():
 		return
+	Autoloads.sfx("break")
 	var x := rect.position.x + TILE / 2.0
 	while x < rect.end.x:
 		var y := rect.position.y + TILE / 2.0

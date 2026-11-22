@@ -128,7 +128,7 @@ func _process(_delta: float) -> void:
 
 
 func _draw_gauges() -> void:
-	var seg := 3.0
+	var seg := 3.0 if max_hp <= 32 else 2.0
 	var origin := Vector2(8, 18)
 	var h := max_hp * seg + 3.0
 	_frame(Rect2(origin, Vector2(10, h + 2)))
