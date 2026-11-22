@@ -17,11 +17,30 @@ godot --path game
 
 **옵션** (타이틀 · 일시정지): 음악·효과음 음량(0–10), 난이도(쉬움: 받는 피해 ×0.5 / 보통 / 어려움: ×1.5), 화면 흔들림, 밝은 깜박임 줄이기(보스 피격 섬광·번개), 전체 화면, 조작 안내. ← → 로 바꾸면 바로 저장됩니다.
 
-**macOS 앱으로 내보내기:** `export_presets.cfg`에 macOS(universal) 설정이 있습니다. Godot 4.7.2 내보내기 템플릿을 설치한 뒤 실행하세요(템플릿은 Godot 에디터의 *편집기 → 내보내기 템플릿 관리*에서 받을 수 있습니다).
+### macOS 앱으로 내보내기
 
-```bash
-mkdir -p game/export && godot --headless --path game --export-release "macOS" export/RebirthProtocol.app
-```
+`export_presets.cfg`에 macOS 설정이 있습니다(universal: Apple Silicon + Intel, ad-hoc 서명). 레벨 파일 `levels/*.txt`는 Godot 리소스가 아니라서 프리셋의 `include_filter`로 직접 넣고, `tests/`는 뺍니다.
+
+1. **Godot 4.7.2 내보내기 템플릿 설치** (한 번만). 에디터의 *편집기 → 내보내기 템플릿 관리*로 받거나, 공식 릴리스(1.28GB)에서 macOS 템플릿만 꺼내 넣습니다:
+
+   ```bash
+   curl -LO https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+   T=~/Library/Application\ Support/Godot/export_templates/4.7.2.stable
+   mkdir -p "$T" && unzip -j Godot_v4.7.2-stable_export_templates.tpz templates/macos.zip templates/version.txt -d "$T"
+   ```
+
+   (받은 파일은 같은 릴리스의 `SHA512-SUMS.txt`로 확인할 수 있습니다.)
+
+2. **빌드** → `game/export/RebirthProtocol.app` (약 164MB, 저장소에는 올리지 않음)
+
+   ```bash
+   mkdir -p game/export && godot --headless --path game --export-release "macOS" export/RebirthProtocol.app
+   ```
+
+3. **실행 확인**: `open game/export/RebirthProtocol.app`. 빌드된 앱에서도 스크린샷 투어가 됩니다:
+   `"game/export/RebirthProtocol.app/Contents/MacOS/Rebirth Protocol (Prototype)" -- --gallery=/tmp/rp_shots`
+
+ad-hoc 서명이라 빌드한 맥에서는 바로 열리지만, 다른 맥에서 내려받아 열면 Gatekeeper가 막습니다(*시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기*). 정식 배포에는 Apple Developer ID 서명과 공증이 필요합니다.
 
 ## 조작
 
@@ -216,7 +235,7 @@ godot --path game -- --gallery=/tmp/rp_gallery
 - [x] 연출: READY, 보스 등장 경고음·징글, 폭발·피격 화면 흔들림
 - [x] 성능: 타일 청크 그리기(화면 밖 생략), 스테이지별 프레임 비용 측정
 - [x] 스테이지 선택 목록 스크롤(스테이지가 늘어 화면을 넘던 문제 수정)
-- [x] macOS 내보내기 설정
+- [x] macOS 앱 빌드 (universal · ad-hoc 서명, 빌드된 앱에서 스크린샷 투어 76장 통과)
 
 아직 없는 것: 실제 플레이로 맞춘 난이도·손맛 조정, 키 재배치, 정식 픽셀 아트, 전투 중 아머 교체, 서명·공증된 배포용 앱.
 
