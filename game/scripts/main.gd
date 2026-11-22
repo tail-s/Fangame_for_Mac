@@ -480,6 +480,7 @@ func load_level() -> void:
 	level.collected = Game.data["collected"] + Game.data["unlocked"]
 	add_child(level)
 	level.load_from_file(stage.path)
+	get_tree().call_group("backdrop", "set_theme", stage.get("id", ""))
 	level.set_reveal(Game.stats.reveal)
 	level.pickup_collected.connect(_on_pickup)
 	_boss_kind = ""
@@ -744,33 +745,4 @@ func _on_player_died() -> void:
 
 
 func _build_backdrop() -> void:
-	var sky := CanvasLayer.new()
-	sky.layer = -10
-	var gradient := Gradient.new()
-	gradient.set_color(0, Color("0a1326"))
-	gradient.set_color(1, Color("1c2f52"))
-	var tex := GradientTexture2D.new()
-	tex.gradient = gradient
-	tex.fill_to = Vector2(0, 1)
-	tex.width = 4
-	tex.height = 64
-	var rect := TextureRect.new()
-	rect.texture = tex
-	rect.stretch_mode = TextureRect.STRETCH_SCALE
-	rect.size = Vector2(384, 216)
-	sky.add_child(rect)
-	add_child(sky)
-
-	# [scroll scale, colour, seed, max tower height]
-	for spec in [[0.2, Color("101f3a"), 3, 230.0], [0.45, Color("15294a"), 7, 170.0]]:
-		var layer := Parallax2D.new()
-		layer.scroll_scale = Vector2(spec[0], spec[0] * 0.5)
-		layer.repeat_size = Vector2(Backdrop.WIDTH, 0)
-		layer.repeat_times = 3
-		layer.z_index = -5
-		var towers := Backdrop.new()
-		towers.color = spec[1]
-		towers.seed_value = spec[2]
-		towers.max_height = spec[3]
-		layer.add_child(towers)
-		add_child(layer)
+	add_child(preload("res://scripts/level/backdrop_set.gd").new())
