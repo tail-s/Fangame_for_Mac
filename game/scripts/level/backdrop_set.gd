@@ -17,6 +17,7 @@ const THEMES := {
 }
 const DEFAULT_THEME := "training"
 const ThemeBase = preload("res://scripts/level/backdrops/theme_base.gd")
+const DepthProps = preload("res://scripts/level/backdrops/depth_props.gd")
 
 ## Accessibility (options menu): false disables lightning and any other bright
 ## flash; a flash already on screen goes away at once (even while paused).
@@ -53,6 +54,12 @@ func set_theme(stage_id: String) -> void:
 	_current.name = "Theme"
 	_current.root = self
 	_current.build()
+	# 2.5D props in front of the theme's parallax layers, behind the play field.
+	if DepthProps.PRESETS.has(t):
+		var props := DepthProps.new()
+		props.name = "DepthProps"
+		props.style = DepthProps.PRESETS[t]
+		_current.add_child(props)
 	add_child(_current)
 
 

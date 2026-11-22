@@ -29,6 +29,7 @@ const ElectricFloor = preload("res://scripts/level/electric_floor.gd")
 const LevelChunk = preload("res://scripts/level/level_chunk.gd")
 ## Tiles are drawn in CHUNK x CHUNK blocks so off-screen blocks are culled.
 const CHUNK := 16
+const TILESET_DIR := "res://art/tiles/"
 
 const C_FILL := Color("1c375b")
 const C_PANEL := Color("142a47")
@@ -74,6 +75,9 @@ var _ci: CanvasItem
 ## `func(req: String) -> bool` used for `; @alt` / `; @change` lines (GDD §5-4
 ## cross-stage changes). Unset = every requirement unmet (original layout).
 var actors: CanvasGroup
+var _tileset: Texture2D
+var _ice_tiles: Texture2D
+static var _tilesets := {}
 var condition := Callable()
 ## `; @change` texts whose requirement is met for this load.
 var active_changes: Array = []
@@ -235,6 +239,8 @@ func open_door(kind := "main") -> void:
 # --- build ----------------------------------------------------------------------
 
 func _build() -> void:
+	_tileset = tileset(meta.get("id", "training"))
+	_ice_tiles = tileset("ice")
 	for cy in range(0, height, CHUNK):
 		for cx in range(0, width, CHUNK):
 			var chunk := LevelChunk.new()
@@ -594,16 +600,45 @@ func _draw() -> void:
 
 
 func _draw_solid(x: int, y: int, pos: Vector2) -> void:
-	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), C_FILL)
-	_ci.draw_rect(Rect2(pos + Vector2(1.5, 1.5), Vector2(TILE - 3, TILE - 3)), C_PANEL, false, 1.0)
-	if (x * 7 + y * 13) % 5 == 0:
-		_ci.draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), C_EDGE.darkened(0.55))
-	if not _looks_solid(x, y - 1):
-		_ci.draw_rect(Rect2(pos, Vector2(TILE, 2)), C_EDGE if cell(x, y) != "e" else Color("efcf5f"))
-	if not _looks_solid(x - 1, y):
-		_ci.draw_rect(Rect2(pos, Vector2(1, TILE)), C_EDGE.darkened(0.4))
-	if not _looks_solid(x + 1, y):
-		_ci.draw_rect(Rect2(pos + Vector2(TILE - 1, 0), Vector2(1, TILE)), C_EDGE.darkened(0.4))
+	_draw_tile(_tileset, x, y, pos)
+	if cell(x, y) == "e" and not _looks_solid(x, y - 1):
+		_ci.draw_rect(Rect2(pos + Vector2(0, 1), Vector2(TILE, 2)), Color("efcf5f"))
+
+
+## One tile from a baked tileset (tools/bake_tiles.gd): the column is the mask of
+## exposed sides (1 up, 2 right, 4 down, 8 left), the row a surface variant picked
+## from the position (plain most of the time).
+func _draw_tile(tex: Texture2D, x: int, y: int, pos: Vector2) -> void:
+	var m := (1 if not _looks_solid(x, y - 1) else 0) | (2 if not _looks_solid(x + 1, y) else 0) \
+			| (4 if not _looks_solid(x, y + 1) else 0) | (8 if not _looks_solid(x - 1, y) else 0)
+	var hsh := absi((x * 73856093) ^ (y * 19349663)) % 20
+	var v := 0 if hsh < 11 else (1 if hsh < 15 else (2 if hsh < 18 else 3))
+	_ci.draw_texture_rect_region(tex, Rect2(pos, Vector2(TILE, TILE)), Rect2(m * TILE, v * TILE, TILE, TILE))
+	# Deep inside a wall: darker, so the surfaces read first.
+	if m == 0:
+		var depth := 1 if _surrounded(x, y, 1) else 0
+		if depth == 1 and _surrounded(x, y, 2):
+			depth = 2
+		if depth > 0:
+			_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.02, 0.03, 0.09, 0.2 * depth))
+
+
+func _surrounded(x: int, y: int, r: int) -> bool:
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if (absi(dx) == r or absi(dy) == r) and not _looks_solid(x + dx, y + dy):
+				return false
+	return true
+
+
+## Tileset for a stage theme (falls back to the training set).
+static func tileset(theme: String) -> Texture2D:
+	var path := TILESET_DIR + theme + ".png"
+	if not ResourceLoader.exists(path):
+		path = TILESET_DIR + "training.png"
+	if not _tilesets.has(path):
+		_tilesets[path] = load(path)
+	return _tilesets[path]
 
 
 ## A non-water cell that sits inside a body of water (water above, or on both sides).
@@ -612,10 +647,7 @@ func _in_water(x: int, y: int) -> bool:
 
 
 func _draw_ice(x: int, y: int, pos: Vector2) -> void:
-	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("5f8fb8"))
-	_ci.draw_line(pos + Vector2(3, 12), pos + Vector2(9, 4), Color("d7edf3", 0.5), 1.0)
-	if not _looks_solid(x, y - 1):
-		_ci.draw_rect(Rect2(pos, Vector2(TILE, 2)), Color("d7edf3"))
+	_draw_tile(_ice_tiles, x, y, pos)
 
 
 func _draw_water(x: int, y: int, pos: Vector2) -> void:
