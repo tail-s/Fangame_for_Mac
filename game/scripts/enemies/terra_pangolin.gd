@@ -42,6 +42,16 @@ const C_SCALE := Color("c07a3e")  # accent: bronze ore-plated scales
 const C_SCALE_DARK := Color("6e4325")
 const C_DIRT := Color("7a5a3a")
 const C_FROST := Color("92dafa")
+# Sprite shading tones. Neighbouring scales alternate between tones that differ
+# clearly (pixel_shade draws a seam between them); tones inside one plate step
+# below the edge threshold so they read as smooth shading.
+const C_SCALE_HI := Color("e0a35a")
+const C_SCALE_MID := Color("9a5c2c")
+const C_STEEL := Color("2b5888")
+const C_STEEL_HI := Color("3a6ea0")
+const C_GLINT := Color("fff2c2")
+const C_DIRT_DARK := Color("553d26")
+const C_DIRT_HI := Color("a07c52")
 
 var state := S.INTRO
 ## Current (or last) pattern name; tests read it.
@@ -497,23 +507,46 @@ func _col(c: Color, white: bool) -> Color:
 	return c
 
 
+func _fill(pts: Array, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), c)
+
+
+## Curled up: two rings of scales spinning around the hub. Each scale is toned by the
+## way it faces right now (lit from above), so the ball keeps its light while it rolls.
 func _draw_ball(white: bool) -> void:
 	var r := HALF
 	draw_circle(Vector2.ZERO, r, _col(C_SCALE_DARK, white))
-	for i in 6:
-		var a := _spin + i * TAU / 6.0
-		draw_colored_polygon(PackedVector2Array([Vector2.from_angle(a - 0.6) * (r + 0.5),
-				Vector2.from_angle(a + 0.35) * (r + 0.5), Vector2.from_angle(a + 0.1) * (r * 0.45)]),
-				_col(C_SCALE, white))
-		draw_arc(Vector2.ZERO, r - 0.5, a - 0.55, a + 0.3, 4, _col(C_AMBER, white), 1.0)
-	draw_circle(Vector2.ZERO, 3.5, _col(C_BLUE, white))
-	draw_circle(Vector2.ZERO, 1.5, C_RED if phase2 else C_CYAN)
+	_scale_ring(8, 6.0, r + 0.6, 0.0, white)
+	# drill-gear hub: steel disc with spinning bolts around the core
+	draw_circle(Vector2.ZERO, 5.5, _col(C_STEEL, white))
+	draw_rect(Rect2(-4, -5, 6, 1), _col(C_STEEL_HI, white))
+	for i in 4:
+		var b := (Vector2.from_angle(_spin + i * PI / 2.0) * 4.0).round()
+		draw_rect(Rect2(b, Vector2.ONE), _col(C_NAVY, white))
+	draw_rect(Rect2(-2, -2, 4, 4), C_RED if phase2 else C_CYAN)
+	draw_rect(Rect2(-2, -2, 2, 1), _col(C_GLINT, white))
+	# fixed specular glint on the upper left (does not spin)
+	draw_rect(Rect2(-7, -10, 3, 1), _col(C_GLINT, white))
+	draw_rect(Rect2(-9, -8, 1, 2), _col(C_GLINT, white))
 	if state == S.CURL:
 		var k := clampf(1.0 - _timer / maxf(_phase_time, 0.01), 0.0, 1.0)
 		draw_arc(Vector2.ZERO, r + 4.0, _spin * 2.0, _spin * 2.0 + PI * (0.4 + k * 1.4), 12,
 				Color(C_AMBER, 0.85), 2.0)
 	elif state == S.CEIL_HOLD and int(t * 16.0) % 2 == 0:
 		draw_arc(Vector2.ZERO, r + 4.0, 0.0, TAU, 20, C_RED, 2.0)
+
+
+## A ring of `n` scales between radii r0..r1 turning with the ball; the dark base shows
+## through the gaps as seams. Bright on top, dark underneath.
+func _scale_ring(n: int, r0: float, r1: float, phase: float, white: bool) -> void:
+	var da := TAU / n
+	for i in n:
+		var a := _spin + phase + i * da
+		var s := sin(a)
+		var tone := C_SCALE_HI if s < -0.45 else (C_SCALE if s < 0.4 else C_SCALE_MID)
+		_fill([Vector2.from_angle(a - da * 0.42) * r1, Vector2.from_angle(a) * (r1 + 0.4),
+				Vector2.from_angle(a + da * 0.42) * r1, Vector2.from_angle(a + da * 0.3) * r0,
+				Vector2.from_angle(a - da * 0.3) * r0], _col(tone, white))
 
 
 func _draw_body(white: bool) -> void:
@@ -538,66 +571,130 @@ func _draw_body(white: bool) -> void:
 		squash = 1.0 - _curl * 0.5
 	var off := Vector2(0, HALF * (1.0 - squash))
 	draw_set_transform(off, rot * facing, Vector2(facing, squash))
-	# tail (pivot at the hip, raised for the slam)
-	var pivot := Vector2(-9, 5)
-	var swing := 1.25 * tail_up
-	var tail := [Vector2(-9, 1), Vector2(-26, 9), Vector2(-27, 12), Vector2(-20, 12), Vector2(-8, 9)]
-	var tail_pts := PackedVector2Array()
-	for p in tail:
-		tail_pts.append(pivot + (p - pivot).rotated(swing))
-	draw_colored_polygon(tail_pts, _col(C_SCALE_DARK, white))
-	for i in 3:
-		var a := pivot + (Vector2(-13 - i * 4.5, 4 + i * 2) - pivot).rotated(swing)
-		draw_line(a, a + Vector2(3, -3).rotated(swing), _col(C_AMBER, white), 1.0)
-	if tail_up > 0.6 and int(t * 14.0) % 2 == 0:
-		draw_circle(tail_pts[2], 2.5, C_RED)
-	# legs and drill claws
-	var step := sin(t * 14.0) * 1.5 if state == S.IDLE else 0.0
-	draw_rect(Rect2(-9 + step, 5, 5, 7), _col(C_NAVY, white))
-	draw_rect(Rect2(5 - step, 5, 5, 7), _col(C_NAVY, white))
-	draw_colored_polygon(PackedVector2Array([Vector2(9 - step, 9), Vector2(14 - step, 12),
-			Vector2(9 - step, 12)]), _col(C_PALE, white))
-	# armoured dome
+	_draw_tail(white, tail_up)
+	# legs: knee guard, shin, foot and drill claws
+	var step := roundf(sin(t * 14.0) * 1.5) if state == S.IDLE else 0.0
+	_draw_leg(-7.0 + step, white)
+	_draw_leg(7.0 - step, white)
+	# armoured dome: rows of overlapping bronze scales (flared while rearing)
 	var dome := PackedVector2Array()
 	for i in 13:
-		var a := PI + PI * i / 12.0
-		dome.append(Vector2(-1.0 + 13.0 * cos(a), 6.0 + 16.0 * sin(a)))
+		dome.append(_arch(PI + PI * i / 12.0, 1.0))
 	draw_colored_polygon(dome, _col(C_SCALE_DARK, white))
-	draw_rect(Rect2(-12, 3, 23, 4), _col(C_BLUE, white))
-	# overlapping scale plates (flared while rearing)
-	var lift := 1.0 + 0.22 * flare
-	for i in 4:
-		var a := PI + 0.45 + i * 0.72
-		var plate := PackedVector2Array([_arch(a - 0.36, 1.08 * lift), _arch(a + 0.3, 1.08 * lift),
-				_arch(a + 0.18, 0.62), _arch(a - 0.3, 0.7)])
-		var c := C_SCALE.lerp(C_AMBER, 0.5 * flare * (0.5 + 0.5 * sin(t * 30.0)))
-		draw_colored_polygon(plate, _col(c, white))
-		draw_line(plate[0], plate[1], _col(C_AMBER, white), 1.0)
+	var glow := 0.5 * flare * (0.5 + 0.5 * sin(t * 30.0))
+	_scale_row(-2.0, -13.0, 5, C_SCALE_MID, flare, glow, white)
+	_scale_row(-6.0, -10.0, 4, C_SCALE, flare, glow, white)
+	_scale_row(-10.0, -7.0, 2, C_SCALE_HI, flare, glow, white)
+	draw_rect(Rect2(Vector2(-5, -7) + _flare_off(Vector2(-4, -7), flare), Vector2(2, 1)), _col(C_GLINT, white))
 	if _frost > 0.0:
 		for i in 3:
 			var p := _arch(PI + 0.8 + i * 0.75, 1.0)
 			draw_colored_polygon(PackedVector2Array([p + Vector2(-2, 1), p + Vector2(0, -5),
 					p + Vector2(2, 1)]), Color(C_PALE, 0.9))
-	# head: snout, mining lamp, nose drill
-	draw_colored_polygon(PackedVector2Array([Vector2(8, -6), Vector2(16, -3), Vector2(21, 0),
-			Vector2(16, 4), Vector2(8, 5)]), _col(C_BLUE, white))
-	draw_circle(Vector2(11, -6), 1.5, _col(C_AMBER, white))
-	var eye := C_RED if phase2 or state in [S.REAR, S.TAIL_UP] else C_CYAN
-	draw_rect(Rect2(12, -3, 3, 2), eye)
-	draw_colored_polygon(PackedVector2Array([Vector2(20, -2), Vector2(27, 1), Vector2(20, 4)]),
-			_col(C_PALE, white))
-	var drill := fmod(t * (30.0 if state in [S.DIG, S.ERUPT] else 6.0), 3.0)
-	for i in 2:
-		var x := 21.0 + drill + i * 3.0
-		if x < 26.0:
-			draw_line(Vector2(x, -1.0 + (x - 20.0) * 0.4), Vector2(x, 3.0 - (x - 20.0) * 0.4),
-					_col(C_CYAN, white), 1.0)
+	# belly frame with cyan power cells
+	_fill([Vector2(-13, 3), Vector2(11, 3), Vector2(12, 7), Vector2(-12, 7)], _col(C_BLUE, white))
+	for x in [-8.0, -3.0, 2.0]:
+		draw_rect(Rect2(x, 4, 3, 2), _col(C_CYAN, white))
+	_draw_head(white)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if state == S.DIG:
 		for i in 4:
 			var ph := fmod(t * 3.0 + i * 0.25, 1.0)
 			draw_rect(Rect2(Vector2(-facing * (6.0 + ph * 18.0), HALF - 2.0 - sin(ph * PI) * 12.0),
 					Vector2(2, 2)), C_DIRT)
+
+
+## One row of shingled scales on the dome: `n` shields 6 px wide from x = `x0`, top at
+## `y0`, pointed lower edges overlapping the row below; clipped to the dome outline.
+## Flared (rearing) scales stand out from the body and flash amber.
+func _scale_row(y0: float, x0: float, n: int, tone: Color, flare: float, glow: float, white: bool) -> void:
+	var grow := 1.0 + 0.25 * flare
+	var c := _col(tone.lerp(C_AMBER, glow), white)
+	var seam := _col(C_SCALE_DARK, white)
+	for i in n:
+		var x := x0 + i * 6.0
+		var o := _flare_off(Vector2(x + 3.0, y0 + 3.0), flare)
+		var pts := []
+		for p in [Vector2(x, y0), Vector2(x + 6, y0), Vector2(x + 6, y0 + 4), Vector2(x + 3, y0 + 6), Vector2(x, y0 + 4)]:
+			pts.append(_dome_clip(p + o, grow))
+		_fill(pts, c)
+	for i in range(1, n):
+		var x := x0 + i * 6.0
+		var o := _flare_off(Vector2(x, y0 + 2.0), flare)
+		var a := _dome_clip(Vector2(x, y0 + 1.0) + o, grow)
+		var b := _dome_clip(Vector2(x, y0 + 4.0) + o, grow)
+		if b.y - a.y >= 2.0 and absf(a.x - (x + o.x)) < 0.5:
+			draw_rect(Rect2(a.x, a.y, 1, b.y - a.y), seam)
+
+
+## Rearing flare: scales are pushed out from the dome centre.
+func _flare_off(p: Vector2, flare: float) -> Vector2:
+	return ((p - Vector2(-1, 6)).normalized() * 3.0 * flare).round()
+
+
+## Keeps a point inside the dome (half ellipse, optionally grown).
+func _dome_clip(p: Vector2, grow: float) -> Vector2:
+	var top := 6.0 - 16.0 * grow
+	var y := maxf(p.y, top)
+	var dy := clampf((y - 6.0) / (16.0 * grow), -1.0, 0.0)
+	var hw := 13.0 * grow * sqrt(1.0 - dy * dy)
+	return Vector2(clampf(p.x, -1.0 - hw, -1.0 + hw), y)
+
+
+func _draw_leg(x: float, white: bool) -> void:
+	_fill([Vector2(x - 3, 6), Vector2(x + 3, 6), Vector2(x + 3, 9), Vector2(x - 3, 9)], _col(C_STEEL, white))
+	draw_rect(Rect2(x - 2, 6, 2, 1), _col(C_STEEL_HI, white))
+	_fill([Vector2(x - 2, 9), Vector2(x + 2, 9), Vector2(x + 3, 12), Vector2(x - 3, 12)], _col(C_NAVY, white))
+	_fill([Vector2(x + 2, 10), Vector2(x + 6, 12), Vector2(x + 2, 12)], _col(C_PALE, white))
+
+
+## Segmented tail (pivot at the hip, raised for the slam); its tip blinks red when armed.
+func _draw_tail(white: bool, tail_up: float) -> void:
+	var pivot := Vector2(-9, 5)
+	var swing := 1.25 * tail_up
+	var rp := func(p: Vector2) -> Vector2: return pivot + (p - pivot).rotated(swing)
+	var top := func(u: float) -> Vector2: return Vector2(-9, 1).lerp(Vector2(-26, 9), u)
+	var bot := func(u: float) -> Vector2: return Vector2(-8, 9).lerp(Vector2(-20, 12), u)
+	var tail := [Vector2(-9, 1), Vector2(-26, 9), Vector2(-27, 12), Vector2(-20, 12), Vector2(-8, 9)]
+	var pts := []
+	for p in tail:
+		pts.append(rp.call(p))
+	_fill(pts, _col(C_SCALE_DARK, white))
+	var tones := [C_SCALE, C_SCALE_HI, C_SCALE, C_SCALE_HI]
+	for j in 4:
+		var u0 := 0.04 + j * 0.24
+		var u1 := u0 + 0.3
+		var m0: Vector2 = top.call(u0).lerp(bot.call(u0), 0.7)
+		var m1: Vector2 = top.call(u1).lerp(bot.call(u1), 0.7)
+		_fill([rp.call(top.call(u0)), rp.call(top.call(u1)), rp.call(m1), rp.call(m0.lerp(m1, 0.4) + Vector2(0, 1)),
+				rp.call(m0)], _col(tones[j], white))
+	if tail_up > 0.6 and int(t * 14.0) % 2 == 0:
+		draw_circle(pts[2], 2.5, C_RED)
+
+
+## Head: steel helmet, mining lamp, eye, jaw and the spinning nose drill.
+func _draw_head(white: bool) -> void:
+	_fill([Vector2(6, -7), Vector2(12, -7), Vector2(17, -4), Vector2(21, -1), Vector2(21, 2), Vector2(16, 4),
+			Vector2(9, 5), Vector2(6, 3)], _col(C_STEEL, white))
+	_fill([Vector2(7, -7), Vector2(12, -7), Vector2(17, -4), Vector2(16, -3), Vector2(11, -5), Vector2(7, -5)],
+			_col(C_STEEL_HI, white))
+	_fill([Vector2(10, 2), Vector2(21, 1), Vector2(21, 2), Vector2(16, 4), Vector2(9, 5)], _col(C_BLUE, white))
+	# mining lamp
+	_fill([Vector2(8, -10), Vector2(13, -10), Vector2(13, -7), Vector2(8, -7)], _col(C_NAVY, white))
+	draw_rect(Rect2(9, -9, 3, 2), _col(C_AMBER, white))
+	draw_rect(Rect2(9, -9, 1, 1), _col(C_GLINT, white))
+	var eye := C_RED if phase2 or state in [S.REAR, S.TAIL_UP] else C_CYAN
+	draw_rect(Rect2(12, -3, 3, 2), eye)
+	draw_rect(Rect2(13, -3, 1, 1), _col(C_GLINT, white))
+	# nose drill with travelling grooves
+	draw_rect(Rect2(19, -2, 2, 6), _col(C_NAVY, white))
+	_fill([Vector2(21, -2), Vector2(28, 1), Vector2(21, 4)], _col(C_PALE, white))
+	var drill := fmod(t * (30.0 if state in [S.DIG, S.ERUPT] else 6.0), 3.0)
+	for i in 2:
+		var x := 22.0 + drill + i * 3.0
+		if x < 27.0:
+			draw_line(Vector2(x, -1.0 + (x - 21.0) * 0.4), Vector2(x, 3.0 - (x - 21.0) * 0.4),
+					_col(C_CYAN, white), 1.0)
 
 
 func _arch(a: float, k: float) -> Vector2:
@@ -616,6 +713,14 @@ func _draw_mound() -> void:
 		var x := -14.0 + i * 3.5
 		pts.append(Vector2(x, 2.0 - (6.0 + wob) * (1.0 - pow(x / 14.0, 2.0))))
 	draw_colored_polygon(pts, C_DIRT)
+	# packed darker soil at the foot, loose lighter clods and pebbles on the crest
+	draw_colored_polygon(PackedVector2Array([Vector2(-14, 2), Vector2(-9, -1), Vector2(9, -1),
+			Vector2(14, 2)]), C_DIRT_DARK)
+	var crest := roundf(-2.0 - (4.0 + wob) * 0.85)
+	draw_rect(Rect2(-5, crest, 4, 2), C_DIRT_HI)
+	draw_rect(Rect2(2, crest + 1.0, 3, 2), C_DIRT_HI)
+	draw_rect(Rect2(-9, -2, 3, 2), C_SCALE_MID)
+	draw_rect(Rect2(6, -2, 2, 2), C_SCALE_MID)
 	for i in 3:
 		var ph := fmod(t * 2.5 + i * 0.33, 1.0)
 		draw_rect(Rect2(Vector2(-8.0 + i * 7.0, -2.0 - sin(ph * PI) * (12.0 if warn else 6.0)),

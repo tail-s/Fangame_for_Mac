@@ -46,6 +46,14 @@ const C_AMBER := Color("f0b84a")
 const C_PALE := Color("d7edf3")
 ## Accent: high-voltage yellow (same family as the electric floor / Pulse Ring).
 const C_VOLT := Color("efcf5f")
+# Sprite shading tones (same families). Tones inside one part step below the
+# pixel_shade edge threshold (smooth shading); separate parts differ clearly.
+const C_STEEL := Color("2b5888")
+const C_STEEL_HI := Color("3a6ea0")
+const C_VIOLET_HI := Color("7652b4")
+const C_VIOLET_LOW := Color("533590")
+const C_EYE_DARK := Color("a8344c")
+const C_LEG := Color("6f93bd")
 
 ## Folded fore wing (body frame: +x = head, -y = back, +y = belly / legs).
 const WING := [Vector2(8, -7), Vector2(-4, -12), Vector2(-19, -11), Vector2(-28, -6),
@@ -435,10 +443,8 @@ func _boss_draw(white: bool) -> void:
 	elif state == S.STAGGER:
 		draw_set_transform(Vector2(0, 3), sin(t * 9.0) * 0.08, Vector2(facing, -1.0))
 	else:
-		draw_set_transform(Vector2(0, sin(t * 14.0) * 1.5), 0.0, Vector2(facing, 1.0))
+		draw_set_transform(Vector2(0, roundf(sin(t * 14.0) * 1.5)), 0.0, Vector2(facing, 1.0))
 
-	var shell := Color.WHITE if white else C_SHELL
-	var dark := Color.WHITE if white else C_DARK
 	var pale := Color.WHITE if white else C_PALE
 	var rib := Color.WHITE if white else accent
 	var glow := clampf(0.25 + _pulse * 0.6 + _charge * 0.8, 0.0, 1.0)
@@ -447,13 +453,13 @@ func _boss_draw(white: bool) -> void:
 	if spread or buzzing:
 		var flap := 0.5 + 0.5 * sin(t * 70.0)
 		var lift := 0.55 + 0.45 * flap if spread else 0.15 + 0.2 * flap
-		_draw_wing(lift - 0.3, Color(pale, 0.22), white)
-		_draw_wing(lift, Color(pale, 0.38), white)
+		_draw_wing(lift - 0.3, Color(pale, 0.18), white, false)
+		_draw_wing(lift, Color(pale, 0.3), white, true)
 	else:
-		_draw_wing(-0.06, Color(pale, 0.22), white)
-		_draw_wing(0.0, Color(pale, 0.4), white)
+		_draw_wing(-0.06, Color(pale, 0.18), white, false)
+		_draw_wing(0.0, Color(pale, 0.3), white, true)
 
-	# legs (belly side)
+	# legs (belly side): steel limbs with dark joints
 	for i in 3:
 		var hip := Vector2(2.0 + i * 3.5, 6.0)
 		var knee: Vector2
@@ -469,26 +475,11 @@ func _boss_draw(white: bool) -> void:
 		else:
 			knee = hip + Vector2(-2.0, 3.0)
 			foot = knee + Vector2(-4.0, 1.0)
-		draw_polyline(PackedVector2Array([hip, knee, foot]), dark, 1.5)
+		draw_polyline(PackedVector2Array([hip, knee, foot]), Color.WHITE if white else C_LEG, 1.0)
 
-	# abdomen with glowing tymbal ribs
-	draw_colored_polygon(PackedVector2Array(ABDOMEN), shell)
-	for i in 4:
-		var x := -16.0 + i * 4.0
-		draw_line(Vector2(x, -5), Vector2(x, 5), Color(rib, glow), 2.0)
-	draw_polyline(PackedVector2Array([Vector2(-18, -5), Vector2(-6, -7), Vector2(0, -6)]),
-			Color.WHITE if white else C_CYAN, 1.0)
-	# thorax + pronotum plate
-	draw_colored_polygon(PackedVector2Array(THORAX), Color.WHITE if white else C_VIOLET)
-	draw_polyline(PackedVector2Array([Vector2(1, -7), Vector2(7, -9), Vector2(11, -5)]),
-			Color.WHITE if white else C_CYAN, 1.5)
-	draw_rect(Rect2(3, -3, 5, 2), Color(rib, 0.5 + glow * 0.5))
-	# head, compound eye, antenna
-	draw_colored_polygon(PackedVector2Array(HEAD), shell.lightened(0.12))
-	draw_circle(Vector2(14.5, -3.0), 3.4, Color.WHITE if white else C_RED)
-	draw_circle(Vector2(15.4, -4.0), 1.2, pale)
-	draw_line(Vector2(17, -6), Vector2(21, -10), pale, 1.0)
-	draw_circle(Vector2(21, -10), 1.0, Color(rib, 0.6 + glow * 0.4))
+	_draw_abdomen(white, rib, glow)
+	_draw_thorax(white, rib, glow)
+	_draw_head(white, rib, glow)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# Dazed: sparks fizzle out into the floor and circle overhead.
@@ -509,15 +500,71 @@ func _boss_draw(white: bool) -> void:
 				Color(C_VOLT, 0.8), 1.0)
 
 
-func _draw_wing(angle: float, color: Color, white: bool) -> void:
+func _fill(pts: Array, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), c)
+
+
+## Segmented abdomen: lit back, dark belly plates, and the four tymbal ribs that
+## flash on every beat (always visible as dark grooves between beats).
+func _draw_abdomen(white: bool, rib: Color, glow: float) -> void:
+	var w := func(c: Color) -> Color: return Color.WHITE if white else c
+	_fill(ABDOMEN, w.call(C_STEEL))
+	_fill([Vector2(-18, -5), Vector2(-6, -7), Vector2(0, -6), Vector2(0, -4), Vector2(-6, -5), Vector2(-17, -3)],
+			w.call(C_STEEL_HI))
+	_fill([Vector2(-20, 2), Vector2(0, 2), Vector2(0, 6), Vector2(-8, 7), Vector2(-18, 5)], w.call(C_SHELL))
+	_fill([Vector2(-22, 0), Vector2(-20, -2), Vector2(-20, 3), Vector2(-21, 2)], w.call(C_DARK))
+	# tymbal ribs: dark violet at rest, charging up to the accent colour on the beat
+	var charge := clampf((glow - 0.25) / 0.75, 0.0, 1.0)
+	var rib_col: Color = rib if white else C_VIOLET_LOW.lerp(rib, charge)
+	for i in 4:
+		var x := -17.0 + i * 4.0
+		var y0 := -5.0 if i == 0 else -6.0
+		draw_rect(Rect2(x, y0, 2, -2.0 * y0), rib_col)
+	draw_rect(Rect2(-12, -6, 2, 1), w.call(C_PALE))
+
+
+## Thorax: violet plates with a cyan trim, wing hinge, and the beat light.
+func _draw_thorax(white: bool, rib: Color, glow: float) -> void:
+	var w := func(c: Color) -> Color: return Color.WHITE if white else c
+	_fill(THORAX, w.call(C_VIOLET))
+	_fill([Vector2(0, -7), Vector2(7, -9), Vector2(11, -5), Vector2(11, -3), Vector2(7, -6), Vector2(0, -5)],
+			w.call(C_VIOLET_HI))
+	_fill([Vector2(0, 3), Vector2(11, 3), Vector2(11, 5), Vector2(6, 7), Vector2(0, 6)], w.call(C_VIOLET_LOW))
+	draw_polyline(PackedVector2Array([Vector2(1, -7), Vector2(7, -9), Vector2(11, -5)]), w.call(C_CYAN), 1.0)
+	draw_rect(Rect2(3, -3, 5, 2), Color(rib, 0.5 + glow * 0.5))
+
+
+## Head: steel face plate, faceted compound eye with a glint, antenna with a beat tip.
+func _draw_head(white: bool, rib: Color, glow: float) -> void:
+	var w := func(c: Color) -> Color: return Color.WHITE if white else c
+	_fill(HEAD, w.call(C_STEEL_HI))
+	_fill([Vector2(11, 2), Vector2(18, 2), Vector2(18, 4), Vector2(11, 6)], w.call(C_SHELL))
+	draw_circle(Vector2(14.5, -3.0), 3.4, w.call(C_RED))
+	_fill([Vector2(12, -2), Vector2(17, -3), Vector2(17, -1), Vector2(15, 0), Vector2(13, 0)], w.call(C_EYE_DARK))
+	draw_rect(Rect2(13, -5, 2, 1), w.call(C_PALE))
+	draw_rect(Rect2(13, -4, 1, 1), w.call(C_PALE))
+	draw_line(Vector2(17, -6), Vector2(21, -10), w.call(C_PALE), 1.0)
+	draw_circle(Vector2(21, -10), 1.0, Color(rib, 0.6 + glow * 0.4))
+
+
+## Glassy wing (translucent, so it stays un-outlined): the fore wing gets a tinted
+## leading edge and veins with the classic cicada cells near the tip.
+func _draw_wing(angle: float, color: Color, white: bool, fore: bool) -> void:
 	var pts := PackedVector2Array()
 	for p in WING:
 		pts.append(WING_PIVOT + (p - WING_PIVOT).rotated(angle))
 	draw_colored_polygon(pts, Color(Color.WHITE, 0.6) if white else color)
-	var vein := Color(C_CYAN, 0.55)
-	var root := WING_PIVOT
+	if white or not fore:
+		return
+	var rp := func(p: Vector2) -> Vector2: return WING_PIVOT + (p - WING_PIVOT).rotated(angle)
+	draw_colored_polygon(PackedVector2Array([rp.call(Vector2(8, -7)), rp.call(Vector2(-4, -12)),
+			rp.call(Vector2(-19, -11)), rp.call(Vector2(-27, -7)), rp.call(Vector2(-19, -9)),
+			rp.call(Vector2(-4, -10))]), Color(C_CYAN, 0.2))
+	var vein := Color(C_CYAN, 0.4)
 	for tip in [Vector2(-26, -5), Vector2(-18, -10), Vector2(-12, -5)]:
-		draw_line(root, WING_PIVOT + (tip - WING_PIVOT).rotated(angle), vein, 1.0)
+		draw_line(WING_PIVOT, rp.call(tip), vein, 1.0)
+	draw_polyline(PackedVector2Array([rp.call(Vector2(-18, -10)), rp.call(Vector2(-21, -5)),
+			rp.call(Vector2(-25, -3))]), vein, 1.0)
 
 
 # --- inner nodes --------------------------------------------------------------------

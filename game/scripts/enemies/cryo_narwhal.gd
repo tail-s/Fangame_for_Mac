@@ -49,6 +49,17 @@ const C_STRIPE := Color("00b8be")
 const C_FIN := Color("6543a2")
 const C_EYE := Color("f0b84a")
 const C_HOT := Color("e34f5b")
+# Shading tones for the sprite (same families as above). Tones inside one part step
+# by less than the pixel_shade edge threshold, so they read as smooth shading; parts
+# that should look separate (belly, fins, horn, visor) differ clearly.
+const C_HULL_HI := Color("3a6ea0")
+const C_HULL_MID := Color("2b5888")
+const C_HULL_LOW := Color("1c4170")
+const C_BELLY_LOW := Color("bcd8e6")
+const C_SEAM := Color("8eb2c8")
+const C_FIN_HI := Color("7652b4")
+const C_FIN_LOW := Color("553591")
+const C_EYE_HI := Color("fff2c2")
 
 var state := S.INTRO
 ## Current attack ("charge", "rain", "breath", "wave"), "roar" during the phase change.
@@ -467,52 +478,22 @@ func _boss_draw(white: bool) -> void:
 		off = Vector2(sin(t * 91.0) * 1.5, cos(t * 77.0))
 	if state in [S.IDLE, S.SWIM, S.RAIN_MARK, S.RAIN_FALL, S.BREATH, S.RECOVER] and _dying < 0.0:
 		off.y += sin(t * 3.2) * 1.5
+	# Whole pixels keep the sprite crisp while it bobs and shakes.
+	off = off.round()
 	var hot := 0.0
 	if state == S.STAGGER:
 		hot = clampf(_timer, 0.0, 1.0) * 0.6
-	var col := func(c: Color) -> Color: return Color.WHITE if white else c
-	var hull: Color = col.call(C_HULL.lerp(C_HOT, hot))
 	if state == S.CHARGE:
 		for i in 3:
 			var bx := -facing * (22.0 + i * 7.0 + fmod(t * 70.0, 7.0))
 			draw_circle(off + Vector2(bx, sin(t * 11.0 + i) * 3.0), 1.5 + i * 0.5, Color(C_ICE_HI, 0.45))
 	draw_set_transform(off, tilt * facing, Vector2(facing, 1.0))
-	# tail flukes and propeller
-	draw_colored_polygon(PackedVector2Array([Vector2(-13, 0), Vector2(-20, -7), Vector2(-17, 0),
-			Vector2(-20, 7)]), col.call(C_FIN))
-	var blade := sin(t * 32.0) * 5.0
-	draw_line(Vector2(-15, -blade), Vector2(-15, blade), col.call(C_STRIPE), 2.0)
-	# hull with a pale belly plate
-	var body := PackedVector2Array([Vector2(-14, -2), Vector2(-10, -7), Vector2(-2, -9), Vector2(7, -8),
-			Vector2(12, -5), Vector2(14, 0), Vector2(12, 5), Vector2(5, 8), Vector2(-6, 8), Vector2(-12, 5)])
-	draw_colored_polygon(body, hull)
-	draw_colored_polygon(PackedVector2Array([Vector2(-11, 4), Vector2(12, 3), Vector2(12, 5),
-			Vector2(5, 8), Vector2(-6, 8), Vector2(-12, 5)]), col.call(C_BELLY))
-	var outline := body.duplicate()
-	outline.append(body[0])
-	draw_polyline(outline, col.call(C_HULL_DARK), 1.0)
-	# conning tower with a teal band
-	draw_colored_polygon(PackedVector2Array([Vector2(-5, -8), Vector2(-3, -13), Vector2(3, -13),
-			Vector2(5, -8)]), col.call(C_HULL_DARK))
-	draw_line(Vector2(-3, -11), Vector2(3, -11), col.call(C_STRIPE), 1.0)
-	# ice armour plates on the back (one breaks off in phase 2)
-	for px in ([-10.0] if phase2 else [-10.0, 8.0]):
-		draw_colored_polygon(PackedVector2Array([Vector2(px - 3, -6), Vector2(px, -10), Vector2(px + 3, -6),
-				Vector2(px, -4)]), col.call(C_ICE.lerp(C_HOT, hot)))
-	if phase2:
-		draw_polyline(PackedVector2Array([Vector2(6, -8), Vector2(8, -5), Vector2(7, -2)]), col.call(C_ICE), 1.0)
-	# flipper, visor, mouth
-	draw_colored_polygon(PackedVector2Array([Vector2(0, 6), Vector2(-5, 11), Vector2(4, 8)]), col.call(C_FIN))
-	draw_rect(Rect2(7, -5, 4, 3), col.call(C_HOT if phase2 else C_EYE))
-	draw_line(Vector2(10, 3), Vector2(14, 2), col.call(C_HULL_DARK), 1.0)
+	_draw_tail(white, hot)
+	_draw_hull(white, hot)
+	_draw_head(white)
 	if state == S.BREATH_WIND or (state == S.BREATH and _glow > 0.0):
 		draw_circle(Vector2(15, 2), 1.5 + 3.0 * _glow, Color(C_ICE_HI, 0.85))
-	# spiral ice horn; it glows and glints during wind-ups
-	draw_colored_polygon(PackedVector2Array([Vector2(12, -3), Vector2(27, -1), Vector2(12, 1)]),
-			col.call(C_ICE.lerp(C_ICE_HI, _glow)))
-	for i in 3:
-		var hx := 15.0 + i * 4.0
-		draw_line(Vector2(hx, -2.4 + i * 0.4), Vector2(hx + 2.0, 0.6 - i * 0.3), col.call(C_ICE_DEEP), 1.0)
+	_draw_horn(white)
 	if _glow > 0.05 and state in [S.CHARGE_WIND, S.WAVE_AIM]:
 		var g := 2.0 + 4.0 * _glow
 		draw_line(Vector2(27 - g, -1), Vector2(27 + g, -1), Color(C_ICE_HI, _glow), 1.0)
@@ -522,6 +503,101 @@ func _boss_draw(white: bool) -> void:
 		for i in 4:
 			var ph := fmod(t * 1.6 + i * 0.25, 1.0)
 			draw_circle(off + Vector2(-9.0 + i * 6.0, -12.0 - ph * 14.0), 1.5 + ph * 2.5, Color(1, 1, 1, 0.55 * (1.0 - ph)))
+
+
+## Sprite colour: flat white on hit-flash frames, glowing red while overheated.
+func _tone(c: Color, white: bool, hot := 0.0) -> Color:
+	if white:
+		return Color.WHITE
+	return c.lerp(C_HOT, hot) if hot > 0.0 else c
+
+
+func _fill(pts: Array, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), c)
+
+
+## Tail stock, two-tone flukes and the spinning propeller between them.
+func _draw_tail(white: bool, hot: float) -> void:
+	_fill([Vector2(-16, -3), Vector2(-21, -2), Vector2(-21, 2), Vector2(-16, 3)], _tone(C_HULL_LOW, white, hot))
+	_fill([Vector2(-20, -1), Vector2(-22, -7), Vector2(-26, -8), Vector2(-24, -1)], _tone(C_FIN_HI, white))
+	_fill([Vector2(-20, -1), Vector2(-24, -1), Vector2(-24, 1), Vector2(-20, 1)], _tone(C_FIN, white))
+	_fill([Vector2(-20, 1), Vector2(-24, 1), Vector2(-26, 8), Vector2(-22, 7)], _tone(C_FIN_LOW, white))
+	var blade := roundf(absf(sin(t * 32.0)) * 5.0)
+	if blade >= 1.0:
+		draw_rect(Rect2(-19, -blade, 2, blade * 2.0), _tone(C_STRIPE, white))
+	draw_rect(Rect2(-19, -1, 2, 2), _tone(C_ICE_HI, white))
+
+
+## Whale hull: lit back, shaded flank, ribbed pale belly, the sail and the ice
+## armour spikes (the one on the head breaks off in phase 2).
+func _draw_hull(white: bool, hot: float) -> void:
+	_fill([Vector2(16, -2), Vector2(15, -5), Vector2(13, -7), Vector2(10, -9), Vector2(6, -10), Vector2(1, -10),
+			Vector2(-4, -9), Vector2(-9, -7), Vector2(-14, -5), Vector2(-18, -3), Vector2(-18, 2), Vector2(-14, 4),
+			Vector2(-9, 7), Vector2(-3, 9), Vector2(3, 9), Vector2(8, 8), Vector2(12, 6), Vector2(15, 3)],
+			_tone(C_HULL_MID, white, hot))
+	_fill([Vector2(-18, 0), Vector2(16, 0), Vector2(15, 3), Vector2(12, 6), Vector2(8, 8), Vector2(3, 9),
+			Vector2(-3, 9), Vector2(-9, 7), Vector2(-14, 4), Vector2(-18, 2)], _tone(C_HULL_LOW, white, hot))
+	_fill([Vector2(-18, 1), Vector2(-13, 2), Vector2(-7, 4), Vector2(-3, 5), Vector2(-3, 9), Vector2(-9, 7),
+			Vector2(-14, 4), Vector2(-18, 2)], _tone(C_HULL, white, hot))
+	_fill([Vector2(15, -5), Vector2(13, -7), Vector2(10, -9), Vector2(6, -10), Vector2(1, -10), Vector2(-4, -9),
+			Vector2(-9, -7), Vector2(-14, -5), Vector2(-13, -4), Vector2(-9, -5), Vector2(-4, -7), Vector2(1, -8),
+			Vector2(6, -8), Vector2(10, -7), Vector2(13, -5)], _tone(C_HULL_HI, white, hot))
+	var spot := _tone(C_HULL_LOW, white, hot)
+	for r in [Rect2(-13, -3, 2, 1), Rect2(-8, -4, 2, 1), Rect2(-5, -2, 2, 1), Rect2(-10, -1, 1, 1)]:
+		draw_rect(r, spot)
+	draw_rect(Rect2(-1, -10, 3, 1), _tone(C_ICE_HI, white))
+	draw_rect(Rect2(11, -8, 2, 1), _tone(C_ICE_HI, white))
+	# pale belly with grooves
+	_fill([Vector2(16, 1), Vector2(11, 4), Vector2(3, 5), Vector2(-5, 5), Vector2(-11, 5), Vector2(-9, 7),
+			Vector2(-3, 9), Vector2(3, 9), Vector2(8, 8), Vector2(12, 6), Vector2(15, 3)], _tone(C_BELLY, white))
+	_fill([Vector2(-8, 7), Vector2(9, 7), Vector2(8, 8), Vector2(3, 9), Vector2(-3, 9)], _tone(C_BELLY_LOW, white))
+	for x in [-5, -1, 3, 7]:
+		draw_rect(Rect2(x, 5, 1, 3), _tone(C_SEAM, white))
+	# head plate seam
+	draw_rect(Rect2(5, -8, 1, 9), _tone(C_HULL_DARK, white))
+	# sail with a teal window band
+	_fill([Vector2(-7, -8), Vector2(-5, -13), Vector2(0, -13), Vector2(2, -10)], _tone(C_HULL, white, hot))
+	draw_rect(Rect2(-4, -12, 4, 2), _tone(C_STRIPE, white))
+	# ice armour spikes, raked back: lit left facet, deep base
+	var ice := _tone(C_ICE.lerp(C_HOT, hot), white)
+	var ice_hi := _tone(C_ICE_HI.lerp(C_HOT, hot * 0.5), white)
+	var ice_deep := _tone(C_ICE_DEEP.lerp(C_HOT, hot), white)
+	_spike(Vector2(-13, -4), 5.0, ice, ice_hi, ice_deep)
+	_spike(Vector2(-9, -6), 7.0, ice, ice_hi, ice_deep)
+	if phase2:
+		_fill([Vector2(7, -8), Vector2(8, -11), Vector2(10, -10), Vector2(11, -12), Vector2(12, -7)], ice_deep)
+	else:
+		_spike(Vector2(10, -7), 6.0, ice, ice_hi, ice_deep)
+
+
+## One ice crystal standing on the back at `b` (base centre), raked toward the tail.
+func _spike(b: Vector2, h: float, ice: Color, hi: Color, deep: Color) -> void:
+	_fill([b + Vector2(-3, 0), b + Vector2(-3, -h + 2.0), b + Vector2(-1, -h), b + Vector2(1, -h + 2.0),
+			b + Vector2(3, 0)], ice)
+	_fill([b + Vector2(-3, 0), b + Vector2(-3, -h + 2.0), b + Vector2(-1, -h), b + Vector2(-1, 0)], hi)
+	_fill([b + Vector2(-3, -1), b + Vector2(3, -1), b + Vector2(3, 0), b + Vector2(-3, 0)], deep)
+
+
+## Slanted visor eye with a glint, and the swept-back flipper.
+func _draw_head(white: bool) -> void:
+	_fill([Vector2(7, -6), Vector2(13, -5), Vector2(14, -2), Vector2(8, -2)], _tone(C_HULL_DARK, white))
+	_fill([Vector2(8, -5), Vector2(13, -4), Vector2(13, -3), Vector2(8, -3)], _tone(C_HOT if phase2 else C_EYE, white))
+	draw_rect(Rect2(9, -5, 1, 1), _tone(C_EYE_HI, white))
+	_fill([Vector2(1, 6), Vector2(6, 7), Vector2(0, 12), Vector2(-4, 12)], _tone(C_FIN, white))
+	_fill([Vector2(-1, 10), Vector2(2, 10), Vector2(0, 12), Vector2(-4, 12)], _tone(C_FIN_LOW, white))
+
+
+## Spiral ice horn; it brightens during wind-ups.
+func _draw_horn(white: bool) -> void:
+	var top := func(x: float) -> float: return -5.0 + (x - 14.0) * 4.0 / 14.0
+	var bot := func(x: float) -> float: return 1.0 - (x - 14.0) * 2.0 / 14.0
+	_fill([Vector2(14, -5), Vector2(28, -1), Vector2(14, 1)], _tone(C_ICE.lerp(C_ICE_HI, _glow), white))
+	_fill([Vector2(14, -5), Vector2(28, -1), Vector2(14, -3)], _tone(C_ICE_HI, white))
+	var band := _tone(C_ICE_DEEP.lerp(C_ICE, _glow), white)
+	for i in 3:
+		var x0 := 17.0 + i * 4.0
+		_fill([Vector2(x0 + 1, top.call(x0 + 1)), Vector2(x0 + 3, top.call(x0 + 3)),
+				Vector2(x0 + 1, bot.call(x0 + 1)), Vector2(x0 - 1, bot.call(x0 - 1))], band)
 
 
 ## World-space warnings: charge lane, icicle marks, slam column, dive bubbles.
