@@ -65,6 +65,10 @@ func _ready() -> void:
 		_timer = 0.8
 
 
+func get_max_hp() -> int:
+	return MAX_HP
+
+
 func get_contact_damage() -> int:
 	return 0 if is_decoy else contact_damage
 

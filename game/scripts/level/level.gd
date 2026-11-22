@@ -1,5 +1,6 @@
 extends Node2D
-## Builds a stage from an ASCII map (legend at the top of levels/*.txt).
+## Builds a stage from an ASCII map. The full tile legend and the `; @key value`
+## metadata header are documented in levels/README.md.
 ## Placeholder until real tile art exists: solid tiles are merged into as few
 ## collision rectangles as possible and drawn with draw_* calls.
 ##
@@ -7,7 +8,8 @@ extends Node2D
 ## `reveal` flag, and listens to the signals below.
 
 signal pickup_collected(pickup)
-signal boss_triggered
+## kind: "main" (B / D / K markers) or "hidden" (b / d / Y markers).
+signal boss_triggered(kind: String)
 
 const TILE := 16
 const Layers = preload("res://scripts/core/layers.gd")
@@ -20,6 +22,9 @@ const Breakable = preload("res://scripts/level/breakable.gd")
 const BlinkPlatform = preload("res://scripts/level/blink_platform.gd")
 const Laser = preload("res://scripts/level/laser.gd")
 const Pickup = preload("res://scripts/level/pickup.gd")
+const Crumble = preload("res://scripts/level/crumble_block.gd")
+const Mover = preload("res://scripts/level/mover.gd")
+const ElectricFloor = preload("res://scripts/level/electric_floor.gd")
 
 const C_FILL := Color("1c375b")
 const C_PANEL := Color("142a47")
@@ -27,12 +32,25 @@ const C_EDGE := Color("00b8be")
 const C_SPIKE := Color("d7edf3")
 const C_SPIKE_TIP := Color("e34f5b")
 
-const EMITTERS := {">": Vector2i.RIGHT, "<": Vector2i.LEFT, "v": Vector2i.DOWN}
-## Map chars that are solid for collision (cracked walls and door are handled apart).
-const SOLID_CHARS := ["#", ">", "<", "v"]
+## Emitter char -> [direction, style]
+const EMITTERS := {
+	">": [Vector2i.RIGHT, "laser"], "<": [Vector2i.LEFT, "laser"],
+	"v": [Vector2i.DOWN, "laser"], "u": [Vector2i.UP, "flame"],
+}
+## Map chars that are solid for collision (cracked walls, doors, crumbling and
+## moving blocks have their own bodies).
+const SOLID_CHARS := ["#", ">", "<", "v", "u", "i", "e"]
+## Non-solid zones the player reacts to (see player.gd _zone_effects).
+const ZONES := {"~": "water", "z": "lowg", "|": "lift"}
+const ARENA_MARKERS := {
+	"main": {"trigger": "B", "door": "D", "spawn": "K"},
+	"hidden": {"trigger": "b", "door": "d", "spawn": "Y"},
+}
 
 var stage_id := ""
 var collected: Array = []
+## `; @key value` header lines (id, name, desc, order, boss, weapon, ...).
+var meta := {}
 var rows := PackedStringArray()
 var width := 0
 var height := 0
@@ -42,15 +60,44 @@ var goal: Area2D = null
 var solid_rects: Array[Rect2i] = []
 var breakables: Array = []
 var lasers: Array = []
-var boss_spawn := Vector2.INF
-## Inner empty rect of the boss room (world space), and the camera rect for it.
-var boss_arena := Rect2()
-var boss_camera := Rect2()
+## kind -> {"rect": Rect2 (inner arena), "camera": Rect2, "spawn": Vector2,
+##          "door": StaticBody2D, "door_rect": Rect2, "closed": bool}
+var arenas := {}
 var reveal := false
 
-var _door: StaticBody2D = null
-var _door_rect := Rect2()
-var _door_closed := false
+# Main-arena shortcuts kept for older code / tests.
+var boss_spawn := Vector2.INF
+var boss_arena := Rect2()
+var boss_camera := Rect2()
+
+
+## Stage list from every `*.txt` in `dir` with an `@id`, sorted by `@order`.
+static func load_registry(dir: String) -> Array:
+	var out := []
+	for file in DirAccess.get_files_at(dir):
+		if not file.ends_with(".txt"):
+			continue
+		var path := dir.path_join(file)
+		var m := parse_meta(FileAccess.get_file_as_string(path))
+		if not m.has("id"):
+			continue
+		m["path"] = path
+		m["order"] = int(m.get("order", "99"))
+		out.append(m)
+	out.sort_custom(func(a, b): return a.order < b.order)
+	return out
+
+
+static func parse_meta(text: String) -> Dictionary:
+	var out := {}
+	for raw in text.split("\n"):
+		var line := raw.strip_edges()
+		if line.begins_with("; @"):
+			var body := line.substr(3)
+			var space := body.find(" ")
+			if space > 0:
+				out[body.substr(0, space)] = body.substr(space + 1).strip_edges()
+	return out
 
 
 func load_from_file(path: String) -> void:
@@ -58,6 +105,7 @@ func load_from_file(path: String) -> void:
 
 
 func load_from_text(text: String) -> void:
+	meta = parse_meta(text)
 	rows.clear()
 	for raw in text.split("\n"):
 		var line := raw.trim_suffix("\r")
@@ -84,8 +132,21 @@ func cell(x: int, y: int) -> String:
 	return r[x] if x < r.length() else "."
 
 
+func cell_at(pos: Vector2) -> String:
+	return cell(floori(pos.x / TILE), floori(pos.y / TILE))
+
+
 func is_solid(x: int, y: int) -> bool:
 	return SOLID_CHARS.has(cell(x, y))
+
+
+## "water", "lowg", "lift" or "" for the tile at a world position.
+func zone_at(pos: Vector2) -> String:
+	return ZONES.get(cell_at(pos), "")
+
+
+func is_ice_at(pos: Vector2) -> bool:
+	return cell_at(pos) == "i"
 
 
 func set_reveal(value: bool) -> void:
@@ -97,15 +158,30 @@ func set_reveal(value: bool) -> void:
 
 
 func has_boss() -> bool:
-	return boss_spawn != Vector2.INF
+	return has_arena("main")
 
 
-## Seals the boss room behind the player.
-func close_door() -> void:
-	if _door == null or _door_closed:
+func has_arena(kind: String) -> bool:
+	return arenas.has(kind) and arenas[kind].has("rect")
+
+
+## Seals an arena behind the player.
+func close_door(kind := "main") -> void:
+	if not arenas.has(kind) or arenas[kind].closed:
 		return
-	_door_closed = true
-	_door.collision_layer = Layers.WORLD
+	arenas[kind].closed = true
+	if arenas[kind].door != null:
+		arenas[kind].door.collision_layer = Layers.WORLD
+	queue_redraw()
+
+
+## Reopens an arena door (after a hidden boss, so the player can leave).
+func open_door(kind := "main") -> void:
+	if not arenas.has(kind):
+		return
+	arenas[kind].closed = false
+	if arenas[kind].door != null:
+		arenas[kind].door.collision_layer = 0
 	queue_redraw()
 
 
@@ -149,26 +225,25 @@ func _build() -> void:
 			blink.rects.append(_px(r))
 		add_child(blink)
 
-	var door_rects := _merge_rects("D")
-	if not door_rects.is_empty():
-		_door = StaticBody2D.new()
-		_door.collision_layer = 0
-		_door.collision_mask = 0
-		_door_rect = _px(door_rects[0])
-		for r in door_rects:
-			_door.add_child(_rect_shape(_px(r)))
-		add_child(_door)
+	for r in _runs("c"):
+		var crumble := Crumble.new()
+		crumble.rect = _px(r)
+		add_child(crumble)
+	for pair in [["m", Vector2.RIGHT], ["n", Vector2.UP]]:
+		for r in _runs(pair[0]):
+			var mover := Mover.new()
+			mover.rect = _px(r)
+			mover.axis = pair[1]
+			add_child(mover)
+	var electric := _merge_rects("e")
+	if not electric.is_empty():
+		var floor_node := ElectricFloor.new()
+		for r in electric:
+			floor_node.rects.append(_px(r))
+		add_child(floor_node)
 
-	var boss_trigger_rects := _merge_rects("B")
-	for r in boss_trigger_rects:
-		var trig := Area2D.new()
-		trig.collision_layer = Layers.TRIGGER
-		trig.collision_mask = Layers.PLAYER
-		trig.monitorable = false
-		var px := _px(r)
-		trig.add_child(_rect_shape(Rect2(px.position.x, px.position.y - TILE * 3, px.size.x, px.size.y + TILE * 3)))
-		trig.body_entered.connect(_on_boss_trigger)
-		add_child(trig)
+	for kind in ARENA_MARKERS:
+		_build_arena_door(kind)
 
 	var laser_index := 0
 	for y in height:
@@ -176,7 +251,7 @@ func _build() -> void:
 			var c := cell(x, y)
 			var feet := Vector2(x * TILE + TILE / 2.0, (y + 1) * TILE)
 			if EMITTERS.has(c):
-				_add_laser(x, y, EMITTERS[c], laser_index)
+				_add_laser(x, y, EMITTERS[c][0], EMITTERS[c][1], laser_index)
 				laser_index += 1
 			elif ArmorData.CAPSULE_CODES.has(c):
 				var part: String = ArmorData.CAPSULE_CODES[c]
@@ -200,10 +275,41 @@ func _build() -> void:
 					var id := "%s_hp_%d_%d" % [stage_id, x, y]
 					if not collected.has(id):
 						_add_pickup("hp", "", id, feet)
-				"K":
-					boss_spawn = Vector2(x * TILE + TILE / 2.0, y * TILE + TILE / 2.0)
-					_compute_arena(x, y)
+				"K", "Y":
+					var kind := "main" if c == "K" else "hidden"
+					_compute_arena(kind, x, y)
+	if has_arena("main"):
+		boss_spawn = arenas.main.spawn
+		boss_arena = arenas.main.rect
+		boss_camera = arenas.main.camera
+	for kind in ARENA_MARKERS:
+		for r in _merge_rects(ARENA_MARKERS[kind].trigger):
+			var trig := Area2D.new()
+			trig.collision_layer = Layers.TRIGGER
+			trig.collision_mask = Layers.PLAYER
+			trig.monitorable = false
+			var px := _px(r)
+			trig.add_child(_rect_shape(Rect2(px.position.x, px.position.y - TILE * 3, px.size.x, px.size.y + TILE * 3)))
+			trig.body_entered.connect(_on_arena_trigger.bind(kind))
+			add_child(trig)
 	queue_redraw()
+
+
+func _build_arena_door(kind: String) -> void:
+	var door_rects := _merge_rects(ARENA_MARKERS[kind].door)
+	if door_rects.is_empty():
+		return
+	var door := StaticBody2D.new()
+	door.collision_layer = 0
+	door.collision_mask = 0
+	for r in door_rects:
+		door.add_child(_rect_shape(_px(r)))
+	add_child(door)
+	var entry: Dictionary = arenas.get(kind, {})
+	entry["door"] = door
+	entry["door_rect"] = _px(door_rects[0])
+	entry["closed"] = false
+	arenas[kind] = entry
 
 
 func _add_pickup(kind: String, part: String, id: String, pos: Vector2) -> void:
@@ -215,8 +321,9 @@ func _add_pickup(kind: String, part: String, id: String, pos: Vector2) -> void:
 	_place(p, pos)
 
 
-func _add_laser(x: int, y: int, d: Vector2i, index: int) -> void:
+func _add_laser(x: int, y: int, d: Vector2i, style: String, index: int) -> void:
 	var laser := Laser.new()
+	laser.style = style
 	laser.emitter_rect = Rect2(x * TILE, y * TILE, TILE, TILE)
 	laser.phase_offset = index * 1.1
 	var pos := Vector2i(x, y)
@@ -229,7 +336,7 @@ func _add_laser(x: int, y: int, d: Vector2i, index: int) -> void:
 		if pos.x < 0 or pos.x >= width or pos.y < 0 or pos.y >= height:
 			laser.segments.append([start, _cell_center(pos - d) + Vector2(d) * (TILE / 2.0)])
 			break
-		if is_solid(pos.x, pos.y) or c == "x" or c == "D":
+		if is_solid(pos.x, pos.y) or c in ["x", "D", "d", "c", "m", "n"]:
 			laser.segments.append([start, _cell_center(pos) - Vector2(d) * (TILE / 2.0)])
 			break
 		if c == "/" or c == "\\":
@@ -243,10 +350,11 @@ func _add_laser(x: int, y: int, d: Vector2i, index: int) -> void:
 	lasers.append(laser)
 
 
-## Boss room: the empty area around 'K', bounded by solids / the door column.
-func _compute_arena(kx: int, ky: int) -> void:
+## Arena: the empty area around the spawn marker, bounded by solids / doors.
+func _compute_arena(kind: String, kx: int, ky: int) -> void:
 	var blocked := func(cx: int, cy: int) -> bool:
-		return is_solid(cx, cy) or cell(cx, cy) == "D" or cx < 0 or cx >= width or cy < 0 or cy >= height
+		return is_solid(cx, cy) or cell(cx, cy) in ["D", "d"] or cx < 0 or cx >= width \
+				or cy < 0 or cy >= height
 	var x0 := kx
 	while not blocked.call(x0 - 1, ky):
 		x0 -= 1
@@ -259,16 +367,20 @@ func _compute_arena(kx: int, ky: int) -> void:
 	var y1 := ky
 	while not blocked.call(kx, y1 + 1):
 		y1 += 1
-	boss_arena = Rect2(x0 * TILE, y0 * TILE, (x1 - x0 + 1) * TILE, (y1 - y0 + 1) * TILE)
+	var rect := Rect2(x0 * TILE, y0 * TILE, (x1 - x0 + 1) * TILE, (y1 - y0 + 1) * TILE)
 	var view := Vector2(384, 216)
-	var cam_pos := Vector2(boss_arena.get_center().x - view.x / 2.0, boss_arena.end.y + TILE * 2 - view.y)
-	boss_camera = Rect2(cam_pos, view)
+	var cam_pos := Vector2(rect.get_center().x - view.x / 2.0, rect.end.y + TILE * 2 - view.y)
+	var entry: Dictionary = arenas.get(kind, {"door": null, "door_rect": Rect2(), "closed": false})
+	entry["rect"] = rect
+	entry["camera"] = Rect2(cam_pos, view)
+	entry["spawn"] = Vector2(kx * TILE + TILE / 2.0, ky * TILE + TILE / 2.0)
+	arenas[kind] = entry
 
 
-func _on_boss_trigger(body: Node) -> void:
-	if body.is_in_group("player") and not _door_closed:
+func _on_arena_trigger(body: Node, kind: String) -> void:
+	if body.is_in_group("player") and has_arena(kind) and not arenas[kind].closed:
 		# Deferred: listeners add physics bodies, which is not allowed mid-flush.
-		boss_triggered.emit.call_deferred()
+		boss_triggered.emit.call_deferred(kind)
 
 
 ## Greedy merge: horizontal runs of `ch`, then stacked runs with identical spans.
@@ -278,15 +390,8 @@ func _merge_rects(ch: String) -> Array[Rect2i]:
 	for y in height + 1:
 		var spans := {}
 		if y < height:
-			var x := 0
-			while x < width:
-				if cell(x, y) == ch:
-					var x0 := x
-					while x < width and cell(x, y) == ch:
-						x += 1
-					spans[Vector2i(x0, x)] = true
-				else:
-					x += 1
+			for span in _row_spans(ch, y):
+				spans[span] = true
 		var next_open := {}
 		for key in open:
 			if spans.has(key):
@@ -300,6 +405,29 @@ func _merge_rects(ch: String) -> Array[Rect2i]:
 				next_open[key] = Rect2i(key.x, y, key.y - key.x, 1)
 		open = next_open
 	return done
+
+
+## Horizontal runs only (each run is its own object: crumbling / moving blocks).
+func _runs(ch: String) -> Array[Rect2i]:
+	var out: Array[Rect2i] = []
+	for y in height:
+		for span in _row_spans(ch, y):
+			out.append(Rect2i(span.x, y, span.y - span.x, 1))
+	return out
+
+
+func _row_spans(ch: String, y: int) -> Array:
+	var spans := []
+	var x := 0
+	while x < width:
+		if cell(x, y) == ch:
+			var x0 := x
+			while x < width and cell(x, y) == ch:
+				x += 1
+			spans.append(Vector2i(x0, x))
+		else:
+			x += 1
+	return spans
 
 
 func _px(r: Rect2i) -> Rect2:
@@ -332,23 +460,37 @@ func _draw() -> void:
 			var c := cell(x, y)
 			var pos := Vector2(x * TILE, y * TILE)
 			match c:
-				"#":
+				"#", "e":
 					_draw_solid(x, y, pos)
+				"i":
+					_draw_ice(x, y, pos)
 				"^":
 					_draw_spikes(pos)
 				"f":
 					_draw_fake(x, y, pos)
 				"/", "\\":
 					_draw_mirror(pos, c == "/")
-	if _door != null:
-		if _door_closed:
-			draw_rect(_door_rect, Color("2a3550"))
-			var yy := _door_rect.position.y + 3.0
-			while yy < _door_rect.end.y:
-				draw_rect(Rect2(_door_rect.position.x + 2, yy, _door_rect.size.x - 4, 2), Color("e34f5b"))
+				"~":
+					_draw_water(x, y, pos)
+				"z":
+					if (x + y) % 3 == 0:
+						draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), Color("b78af3", 0.35))
+				"|":
+					draw_rect(Rect2(pos + Vector2(4, 0), Vector2(8, TILE)), Color("71dedf", 0.12))
+					draw_rect(Rect2(pos + Vector2(7, 3 + (y % 2) * 6), Vector2(2, 4)), Color("71dedf", 0.4))
+	for kind in arenas:
+		var a: Dictionary = arenas[kind]
+		if a.get("door") == null:
+			continue
+		var r: Rect2 = a.door_rect
+		if a.closed:
+			draw_rect(r, Color("2a3550"))
+			var yy := r.position.y + 3.0
+			while yy < r.end.y:
+				draw_rect(Rect2(r.position.x + 2, yy, r.size.x - 4, 2), Color("e34f5b"))
 				yy += 8.0
 		else:
-			draw_rect(Rect2(_door_rect.position.x + 6, _door_rect.position.y, 4, _door_rect.size.y), Color("497593", 0.4))
+			draw_rect(Rect2(r.position.x + 6, r.position.y, 4, r.size.y), Color("497593", 0.4))
 
 
 func _draw_solid(x: int, y: int, pos: Vector2) -> void:
@@ -357,11 +499,24 @@ func _draw_solid(x: int, y: int, pos: Vector2) -> void:
 	if (x * 7 + y * 13) % 5 == 0:
 		draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), C_EDGE.darkened(0.55))
 	if not _looks_solid(x, y - 1):
-		draw_rect(Rect2(pos, Vector2(TILE, 2)), C_EDGE)
+		draw_rect(Rect2(pos, Vector2(TILE, 2)), C_EDGE if cell(x, y) != "e" else Color("efcf5f"))
 	if not _looks_solid(x - 1, y):
 		draw_rect(Rect2(pos, Vector2(1, TILE)), C_EDGE.darkened(0.4))
 	if not _looks_solid(x + 1, y):
 		draw_rect(Rect2(pos + Vector2(TILE - 1, 0), Vector2(1, TILE)), C_EDGE.darkened(0.4))
+
+
+func _draw_ice(x: int, y: int, pos: Vector2) -> void:
+	draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("5f8fb8"))
+	draw_line(pos + Vector2(3, 12), pos + Vector2(9, 4), Color("d7edf3", 0.5), 1.0)
+	if not _looks_solid(x, y - 1):
+		draw_rect(Rect2(pos, Vector2(TILE, 2)), Color("d7edf3"))
+
+
+func _draw_water(x: int, y: int, pos: Vector2) -> void:
+	draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
+	if cell(x, y - 1) != "~":
+		draw_rect(Rect2(pos, Vector2(TILE, 1)), Color(0.7, 0.9, 1.0, 0.7))
 
 
 ## Fake tiles look like solid ground unless Vanguard HEAD reveals them.

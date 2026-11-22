@@ -91,6 +91,8 @@ var hp := 0
 var core := 50.0
 ## Falling below this y kills the player (set by the stage).
 var kill_y := INF
+## The stage (level.gd) for tile zones: water, low gravity, lifts, ice. Optional.
+var env = null
 var loadout := ArmorData.neutral_loadout()
 var stats := ArmorData.compute(ArmorData.neutral_loadout())
 
@@ -173,6 +175,8 @@ var _dual_granted := false
 var _hits := {}  # enemies already struck by the current dash / special
 var _core_shown := -1
 var _regen_clock := 0.0
+var _zone := ""
+var _on_ice := false
 
 
 func _ready() -> void:
@@ -584,6 +588,16 @@ func _process_move(delta: float) -> void:
 		flying = false
 		hover_left = CHARACTERS[character].hover
 	wall_dir = _probe_wall()
+	_zone = env.zone_at(global_position + Vector2(0, -BODY_SIZE.y / 2.0)) if env != null else ""
+	_on_ice = on_floor and env != null and env.is_ice_at(global_position + Vector2(0, 2))
+	var grav_mult := 1.0
+	var fall_cap := max_fall_speed
+	if _zone == "water":
+		grav_mult = 0.45
+		fall_cap = 120.0
+	elif _zone == "lowg":
+		grav_mult = 0.3
+		fall_cap = 110.0
 
 	# Dash. Ground dash ends on timer, release, turning around, or running off a
 	# ledge (which keeps the speed as air momentum). Air dash needs Aero LEG or
@@ -640,7 +654,8 @@ func _process_move(delta: float) -> void:
 	elif locked and on_floor:
 		velocity.x = 0.0
 	elif wall_lock_timer <= 0.0:
-		velocity.x = in_dir * (dash_speed if dash_momentum else walk_speed)
+		var target := in_dir * (dash_speed if dash_momentum else walk_speed)
+		velocity.x = move_toward(velocity.x, target, 260.0 * delta) if _on_ice else target
 
 	# Vertical.
 	if air_dashing:
@@ -655,7 +670,9 @@ func _process_move(delta: float) -> void:
 		if not in_jump and velocity.y < -jump_cut_velocity:
 			velocity.y = -jump_cut_velocity
 		if not on_floor:
-			velocity.y = minf(velocity.y + gravity * delta, max_fall_speed)
+			velocity.y = minf(velocity.y + gravity * grav_mult * delta, fall_cap)
+	if _zone == "lift" and not air_dashing:
+		velocity.y = move_toward(velocity.y, -160.0, 2200.0 * delta)
 
 	var sliding := not on_floor and velocity.y > 0.0 and wall_dir != 0 \
 			and in_dir == wall_dir and wall_lock_timer <= 0.0 and state != State.DASH and not mini
@@ -892,7 +909,7 @@ func _grant_dual_core() -> void:
 
 
 func _jump() -> void:
-	velocity.y = -jump_velocity * (0.85 if mini else 1.0)
+	velocity.y = -jump_velocity * (0.85 if mini else 1.0) * (1.12 if _zone == "water" else 1.0)
 	jump_buffer_timer = 0.0
 	coyote_timer = 0.0
 	dash_momentum = state == State.DASH and not air_dashing

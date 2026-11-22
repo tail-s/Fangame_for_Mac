@@ -62,6 +62,8 @@ func _run_all() -> void:
 	await test_echo_copy_mini()
 	await test_weapons()
 	await test_boss_weakness()
+	await test_gimmicks()
+	test_stage_registry()
 	test_save_roundtrip()
 	print("\n%d passed, %d failed" % [_pass, _fail])
 	quit(1 if _fail > 0 else 0)
@@ -577,6 +579,81 @@ func test_boss_weakness() -> void:
 	b.take_damage(3, "pulse_ring")
 	_check(b.state == Gecko.S.RUN, "weakness stagger has a cooldown (no stun lock)")
 	await _free(w)
+
+
+# --- stage gimmicks (phase 5 framework) ---------------------------------------------
+
+const GIMMICK_MAP := """; @id gimmick_test
+#..........................................................#
+#..........................................................#
+#..~~~~~...zzzzz...|||.....................................#
+#..~~~~~...zzzzz...|||.....................................#
+#..~~~~~...zzzzz...|||.....................................#
+#..~~~~~...zzzzz...|||.....................................#
+#..~~~~~...zzzzz...|||.....................................#
+#..~~~~~...zzzzz...|||.......................b..d.......Y..#
+#..........................................................#
+#.....iiiiiiiiii..........cccc......mmmm..........eeee.....#
+############################################################
+"""
+
+
+func test_gimmicks() -> void:
+	var lv = Level.new()
+	root.add_child(lv)
+	lv.load_from_text(GIMMICK_MAP)
+	var p = Player.new()
+	p.scripted = true
+	p.env = lv
+	lv.add_child(p)
+	# Water and low gravity cap the fall speed.
+	for spot in [[Vector2(72, 40), 120.0, "water"], [Vector2(200, 40), 110.0, "low gravity"]]:
+		p.position = spot[0]
+		p.velocity = Vector2.ZERO
+		await _frames(25)
+		_check(p.velocity.y <= spot[1] + 0.5, "%s caps fall speed (vy=%.0f)" % [spot[2], p.velocity.y])
+	# Lift pushes upward.
+	p.position = Vector2(312, 120)
+	p.velocity = Vector2.ZERO
+	await _frames(20)
+	_check(p.position.y < 90.0, "updraft lift pushes the player up (y=%.0f)" % p.position.y)
+	# Ice keeps sliding after the input is released.
+	p.position = Vector2(150, 143)
+	p.velocity = Vector2.ZERO
+	await _frames(40)
+	p.in_dir = 1
+	await _frames(40)
+	p.in_dir = 0
+	await _frames(4)
+	_check(p.velocity.x > 40.0, "ice is slippery (vx=%.0f after release)" % p.velocity.x)
+	await _frames(40)
+	# Crumbling floor gives way.
+	p.position = Vector2(440, 143)
+	p.velocity = Vector2.ZERO
+	await _frames(70)
+	_check(p.position.y > 152.0, "crumbling floor drops the player onto the floor below (y=%.0f)" % p.position.y)
+	# Moving platform moves.
+	var mover = null
+	for c in lv.get_children():
+		if c is AnimatableBody2D:
+			mover = c
+	var x0: float = mover.position.x
+	await _frames(30)
+	_check(absf(mover.position.x - x0) > 5.0, "moving platform slides")
+	_check(lv.has_arena("hidden") and lv.arenas.hidden.rect.size.x > 0, "hidden boss room (b / d / Y) is detected")
+	_check(lv.zone_at(Vector2(72, 60)) == "water" and lv.is_ice_at(Vector2(100, 150)), "zone / ice lookups")
+	lv.queue_free()
+	await process_frame
+
+
+func test_stage_registry() -> void:
+	var reg: Array = Level.load_registry("res://levels")
+	var ids := reg.map(func(s): return s.id)
+	_check(ids.size() >= 2 and ids[0] == "training" and ids.has("prism_gecko"),
+			"stage registry reads levels/*.txt headers in order (%s)" % str(ids))
+	var prism: Dictionary = reg[ids.find("prism_gecko")]
+	_check(prism.get("boss", "") == "res://scripts/enemies/prism_gecko.gd" and prism.get("weapon") == "refraction_beam",
+			"stage metadata: boss script and weapon")
 
 
 func test_save_roundtrip() -> void:

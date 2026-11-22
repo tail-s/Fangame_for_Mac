@@ -13,6 +13,8 @@ var segments: Array = []  # [Vector2 from, Vector2 to] pairs in world space
 var emitter_rect := Rect2()
 var phase_offset := 0.0
 var damage := 3
+## "laser" (red beam) or "flame" (heat vent, drawn as a flame column).
+var style := "laser"
 var _clock := 0.0
 var _area
 var _t := 0.0
@@ -49,16 +51,21 @@ func _physics_process(delta: float) -> void:
 
 func _draw() -> void:
 	draw_rect(emitter_rect, Color("2a3550"))
-	draw_rect(emitter_rect.grow(-3.0), Color("e34f5b") if is_on() else Color("6543a2"))
+	var hot := Color("ef9352") if style == "flame" else Color("e34f5b")
+	draw_rect(emitter_rect.grow(-3.0), hot if is_on() else Color("6543a2"))
 	var warn := _clock >= OFF_TIME and not is_on()
 	if not (warn or is_on()):
 		return
 	for seg in segments:
 		var a: Vector2 = seg[0]
 		var b: Vector2 = seg[1]
-		if is_on():
+		if is_on() and style == "flame":
+			var w := WIDTH + 4.0 + sin(_t * 40.0) * 2.0
+			draw_line(a, b, Color("ef9352", 0.85), w + 2.0)
+			draw_line(a, b, Color("f0b84a"), w * 0.5)
+		elif is_on():
 			var w := WIDTH + sin(_t * 60.0)
 			draw_line(a, b, Color("e34f5b"), w + 2.0)
 			draw_line(a, b, Color("ffd6d6"), 1.0)
 		elif int(_t * 16.0) % 2 == 0:
-			draw_line(a, b, Color("e34f5b", 0.6), 1.0)
+			draw_line(a, b, Color("ef9352" if style == "flame" else "e34f5b", 0.6), 1.0)

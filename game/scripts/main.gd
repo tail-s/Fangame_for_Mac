@@ -6,19 +6,13 @@ extends Node2D
 const ArmorData = preload("res://scripts/armor/armor_data.gd")
 const Level = preload("res://scripts/level/level.gd")
 const Player = preload("res://scripts/player/player.gd")
-const PrismGecko = preload("res://scripts/enemies/prism_gecko.gd")
 const Hud = preload("res://scripts/ui/hud.gd")
 const MenuScreen = preload("res://scripts/ui/menu_screen.gd")
 const ArmorLab = preload("res://scripts/ui/armor_lab.gd")
 const Backdrop = preload("res://scripts/level/backdrop.gd")
 const Autoshot = preload("res://scripts/debug/autoshot.gd")
 
-const STAGES := [
-	{"id": "training", "name": "TRAINING FACILITY", "desc": "훈련 시설 · 아머 파츠 캡슐 7개",
-			"path": "res://levels/test_stage.txt"},
-	{"id": "prism_gecko", "name": "PRISM GECKO", "desc": "광학 데이터 보관소 · 보스전",
-			"path": "res://levels/prism_gecko.txt", "weapon": "refraction_beam"},
-]
+const LEVEL_DIR := "res://levels"
 ## Sortie choices (GDD §6 tag battle). Characters are original designs.
 const PARTIES := [["ix", "sable"], ["ix", "echo"], ["sable", "echo"], ["ix"]]
 const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
@@ -30,15 +24,19 @@ var player: CharacterBody2D
 var boss: Node2D
 var hud: CanvasLayer
 var stage: Dictionary = {}
+## Stage registry built from the `; @key` headers of levels/*.txt (see levels/README.md).
+var stages: Array = []
 
 var _cam: Camera2D
 var _menu: CanvasLayer
 var _lab: CanvasLayer
 var _in_boss := false
+var _boss_kind := ""
 var _generation := 0  # bumps on every (re)load so stale timers do nothing
 
 
 func _ready() -> void:
+	stages = load_stage_registry()
 	_build_backdrop()
 	Game.loadout_changed.connect(_on_loadout_changed)
 	for arg in OS.get_cmdline_user_args():
@@ -90,17 +88,58 @@ func show_title() -> void:
 			"↑↓ 선택   Z / Enter 결정", _on_title_choice, Callable())
 
 
+static func load_stage_registry() -> Array:
+	return Level.load_registry(LEVEL_DIR)
+
+
+## Stage bosses beaten (stages with a `boss` that are not the final stage).
+func bosses_cleared() -> int:
+	var n := 0
+	for s in stages:
+		if s.has("boss") and s.get("final", "") != "true" and Game.is_cleared(s.id):
+			n += 1
+	return n
+
+
+## `bosses:N` and/or `+eclipse` / `+fragment`.
+func requirement_met(req: String) -> bool:
+	for part in req.split("+", false):
+		part = part.strip_edges()
+		if part.begins_with("bosses:"):
+			if bosses_cleared() < int(part.substr(7)):
+				return false
+		elif part != "" and not Game.is_cleared("hidden_" + part):
+			return false
+	return true
+
+
 func show_select() -> void:
 	_leave_stage()
 	var items := []
-	for s in STAGES:
-		var note: String = s.desc + ("   ✓ CLEAR" if Game.is_cleared(s.id) else "")
-		items.append({"id": s.id, "text": s.name, "note": note})
+	for s in stages:
+		var locked: bool = s.has("require") and not requirement_met(s.require)
+		var note: String = s.get("desc", "")
+		if locked:
+			note = "🔒 " + _requirement_text(s.require)
+		elif Game.is_cleared(s.id):
+			note += "   ✓ CLEAR"
+		items.append({"id": "locked" if locked else s.id, "text": s.get("name", s.id), "note": note})
 	items.append({"id": "lab", "text": "ARMOR LAB", "note": "파츠 %d / 8 · 장착 · 프리셋" % Game.unlocked_count()})
 	items.append({"id": "title", "text": "타이틀로"})
-	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 클리어 %d / %d" % [Game.max_hp(),
-			Game.unlocked_count(), Game.data["cleared"].size(), STAGES.size()],
+	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 보스 %d / 6" % [Game.max_hp(),
+			Game.unlocked_count(), bosses_cleared()],
 			items, "Z 결정   Esc 타이틀", _on_select_choice, show_title)
+
+
+func _requirement_text(req: String) -> String:
+	var bits := []
+	for part in req.split("+", false):
+		part = part.strip_edges()
+		if part.begins_with("bosses:"):
+			bits.append("보스 %d명 격파 필요" % int(part.substr(7)))
+		elif part != "":
+			bits.append("히든 보스 필요")
+	return " · ".join(bits)
 
 
 func open_lab() -> void:
@@ -157,6 +196,8 @@ func _on_select_choice(id: String) -> void:
 			open_lab()
 		"title":
 			show_title()
+		"locked":
+			pass
 		_:
 			_show_party_select(id)
 
@@ -220,7 +261,7 @@ func _close_menu() -> void:
 # --- stage ----------------------------------------------------------------------------
 
 func start_stage(id: String) -> void:
-	for s in STAGES:
+	for s in stages:
 		if s.id == id:
 			stage = s
 	Game.clear_checkpoint()
@@ -249,6 +290,7 @@ func load_level() -> void:
 	level.load_from_file(stage.path)
 	level.set_reveal(Game.stats.reveal)
 	level.pickup_collected.connect(_on_pickup)
+	_boss_kind = ""
 	level.boss_triggered.connect(_on_boss_trigger)
 	for cp in level.checkpoints:
 		cp.reached.connect(_on_checkpoint)
@@ -261,6 +303,7 @@ func load_level() -> void:
 	player.max_hp = Game.max_hp()
 	player.position = Game.checkpoint if Game.has_checkpoint else level.spawn
 	level.add_child(player)
+	player.env = level
 	player.setup_party(Game.party(), Game.max_hp())
 	player.weapons = Game.weapons_available()
 	player.apply_loadout(Game.loadout())
@@ -350,23 +393,35 @@ func _on_pickup(pk) -> void:
 		hud.toast("HP 상한 +2", 3.0)
 
 
-func _on_boss_trigger() -> void:
-	if _in_boss or not level.has_boss():
+func _on_boss_trigger(kind: String) -> void:
+	if _in_boss or not level.has_arena(kind):
+		return
+	var script_path: String = stage.get("boss" if kind == "main" else "hidden_boss", "")
+	if kind == "hidden":
+		var hid: String = stage.get("hidden_id", "")
+		if script_path == "" or Game.is_cleared("hidden_" + hid):
+			return
+		if not requirement_met(stage.get("hidden_require", "")):
+			hud.toast("미확인 신호… 아직 반응이 약하다 (%s)" % _requirement_text(stage.get("hidden_require", "")), 2.5)
+			return
+	if script_path == "":
 		return
 	_in_boss = true
-	level.close_door()
-	_set_camera_limits(level.boss_camera)
+	_boss_kind = kind
+	var arena: Dictionary = level.arenas[kind]
+	level.close_door(kind)
+	_set_camera_limits(arena.camera)
 	_cam.reset_smoothing()
 	player.control_lock = 1.6
-	boss = PrismGecko.new()
-	boss.arena = level.boss_arena
-	boss.position = level.boss_spawn
+	boss = load(script_path).new()
+	boss.arena = arena.rect
+	boss.position = arena.spawn
 	boss.player = player
 	level.add_child(boss)
 	boss.hp_changed.connect(hud.set_boss_hp)
 	boss.defeated.connect(_on_boss_defeated)
-	hud.set_boss_hp(boss.hp, PrismGecko.MAX_HP)
-	hud.show_message("WARNING")
+	hud.set_boss_hp(boss.hp, boss.get_max_hp())
+	hud.show_message("WARNING" if kind == "main" else "!! UNKNOWN SIGNAL !!")
 	var gen := _generation
 	await get_tree().create_timer(1.4).timeout
 	if gen == _generation and hud != null:
@@ -375,11 +430,30 @@ func _on_boss_trigger() -> void:
 
 func _on_boss_defeated() -> void:
 	hud.hide_boss()
+	if _boss_kind == "hidden":
+		_on_hidden_defeated()
+		return
 	var weapon: String = stage.get("weapon", "")
 	if weapon != "" and not Game.data["weapons"].has(weapon):
 		Game.unlock_weapon(weapon)
 		hud.toast("특수무기 %s 획득 — IX 로 Q / E 전환" % WeaponShot.INFO[weapon].name, 3.4)
 	_finish_stage("MISSION COMPLETE")
+
+
+## Hidden boss down: reward, reopen the room, and let the run continue.
+func _on_hidden_defeated() -> void:
+	var hid: String = stage.get("hidden_id", "")
+	Game.mark_cleared("hidden_" + hid)
+	_in_boss = false
+	boss = null
+	_set_camera_limits(Rect2(Vector2.ZERO, level.pixel_size()))
+	level.open_door("hidden")
+	_reward_hidden(hid)
+
+
+## Rewards for hidden bosses (extended by the Ultimate Armor / endings step).
+func _reward_hidden(hid: String) -> void:
+	hud.toast("히든 보스 격파: %s" % hid.to_upper(), 3.0)
 
 
 func _on_goal() -> void:

@@ -1,9 +1,10 @@
-; Prism Gecko — optical data archive (16 px tiles). Edit freely; rows may differ in length.
-; #  solid      x  cracked wall (Vanguard ARM charge)   f  fake tile (Vanguard HEAD reveals)
-; o/O hologram platforms (alternate)   >  <  v  laser emitters   /  \  mirrors
-; ^  spikes     P  spawn   C  checkpoint   G  goal   w  walker   t  turret
-; 1-8 armor capsules (1-4 Vanguard H/B/A/L, 5-8 Aero H/B/A/L)   +  HP-up
-; B  boss trigger   D  boss door   K  boss spawn   .  empty
+; Prism Gecko — optical data archive. Tile legend and metadata keys: levels/README.md
+; @id prism_gecko
+; @name PRISM GECKO
+; @desc 광학 데이터 보관소 · 약점 PULSE RING
+; @order 1
+; @boss res://scripts/enemies/prism_gecko.gd
+; @weapon refraction_beam
 #........................####################.......................................................................................................#########################
 #........................####################.......................................................................................................#########################
 #........................####################.......................................................................................................#########################
