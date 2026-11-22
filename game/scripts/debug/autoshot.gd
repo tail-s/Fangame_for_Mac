@@ -352,6 +352,14 @@ func _gallery() -> void:
 		for kind in ["main", "hidden"]:
 			if not main.level.has_arena(kind):
 				continue
+			if kind == "hidden":
+				# Meet the hidden requirement: every stage cleared (+ Eclipse for Λ),
+				# but not this hidden boss itself.
+				var hid: String = s.get("hidden_id", "")
+				Game.data["cleared"] = main.stages.map(func(st): return st.id)
+				if hid == "fragment":
+					Game.data["cleared"].append("hidden_eclipse")
+				main.hud.hide_boss()
 			var arena: Rect2 = main.level.arenas[kind].rect
 			await _teleport(Vector2(arena.position.x + 48.0, arena.end.y - 2.0))
 			main._on_boss_trigger(kind)

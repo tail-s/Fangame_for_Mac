@@ -481,8 +481,11 @@ func _draw() -> void:
 					if (x + y) % 3 == 0:
 						draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), Color("b78af3", 0.35))
 				"|":
-					draw_rect(Rect2(pos + Vector2(4, 0), Vector2(8, TILE)), Color("71dedf", 0.12))
-					draw_rect(Rect2(pos + Vector2(7, 3 + (y % 2) * 6), Vector2(2, 4)), Color("71dedf", 0.4))
+					draw_rect(Rect2(pos + Vector2(3, 0), Vector2(10, TILE)), Color("71dedf", 0.22))
+					draw_rect(Rect2(pos + Vector2(4, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
+					draw_rect(Rect2(pos + Vector2(11, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
+					draw_colored_polygon(PackedVector2Array([pos + Vector2(5, 10 - (y % 2) * 5),
+							pos + Vector2(8, 6 - (y % 2) * 5), pos + Vector2(11, 10 - (y % 2) * 5)]), Color("d7edf3", 0.7))
 	for kind in arenas:
 		var a: Dictionary = arenas[kind]
 		if a.get("door") == null:
