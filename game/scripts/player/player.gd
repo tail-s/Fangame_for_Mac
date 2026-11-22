@@ -24,8 +24,7 @@ const ArmorData = preload("res://scripts/armor/armor_data.gd")
 const PlayerShot = preload("res://scripts/combat/player_shot.gd")
 const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
 const Shockwave = preload("res://scripts/combat/shockwave.gd")
-const PlayerVisual = preload("res://scripts/player/player_visual.gd")
-const PartnerVisual = preload("res://scripts/player/partner_visual.gd")
+const SpriteVisual = preload("res://scripts/player/sprite_visual.gd")
 const SaberAttack = preload("res://scripts/player/saber_attack.gd")
 const EchoAttack = preload("res://scripts/player/echo_attack.gd")
 const Explosion = preload("res://scripts/fx/explosion.gd")
@@ -321,10 +320,9 @@ func _leave_character() -> void:
 
 func _visual_for(id: String) -> Node2D:
 	if not _visuals.has(id):
-		var v: Node2D = PlayerVisual.new() if id == "ix" else PartnerVisual.new()
+		var v: Node2D = SpriteVisual.new()
 		v.player = self
-		if id != "ix":
-			v.character = id
+		v.character = id
 		add_child(v)
 		_visuals[id] = v
 		if id == "ix":

@@ -6,7 +6,7 @@ extends CanvasLayer
 signal closed
 
 const ArmorData = preload("res://scripts/armor/armor_data.gd")
-const PlayerVisual = preload("res://scripts/player/player_visual.gd")
+const PlayerVisual = preload("res://scripts/player/sprite_visual.gd")
 const PreviewPuppet = preload("res://scripts/player/preview_puppet.gd")
 
 const C_TEXT := Color("d7edf3")
