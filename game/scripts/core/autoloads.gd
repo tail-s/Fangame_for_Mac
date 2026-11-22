@@ -13,6 +13,12 @@ static func sfx(sfx_name: String, pitch := 1.0) -> void:
 		a.sfx(sfx_name, pitch)
 
 
+static func stop_sfx(sfx_name: String) -> void:
+	var a := node("Audio")
+	if a != null and a.has_method("stop_sfx"):
+		a.stop_sfx(sfx_name)
+
+
 ## "Reduce flashes" option is off (bright flashes allowed).
 static func flashes() -> bool:
 	var g := node("Game")

@@ -1,7 +1,8 @@
-# Rebirth Protocol — Prototype 0.1
+# Rebirth Protocol — Prototype 0.6
 
 GDD v0.2(`../GDD/ROCKMAN_X9_GDD_v0.2.md`)의 시스템을 검증하는 Godot 4.7 프로토타입입니다.
 주인공·그래픽은 **오리지널 임시 디자인**(코드로 그린 벡터)이며, 원작 캐릭터·이름·스프라이트·음악은 사용하지 않습니다.
+효과음과 음악도 음원 파일 없이 **코드로 합성한 오리지널**입니다.
 
 ## 실행
 
@@ -12,7 +13,15 @@ godot --path game
 에디터로 열기: `godot -e --path game` (또는 Godot 앱에서 `game/project.godot` 열기)
 
 흐름: 타이틀(새 게임 / 이어하기) → 스테이지 선택(훈련 시설 · 프리즘 게코 · 아머 랩) → 출격 멤버 선택 → 스테이지 → 클리어 후 스테이지 선택.
-저장 파일: `~/Library/Application Support/Godot/app_userdata/Rebirth Protocol (Prototype)/save.json`
+저장 파일: `~/Library/Application Support/Godot/app_userdata/Rebirth Protocol (Prototype)/save.json` (옵션은 같은 폴더의 `settings.cfg`)
+
+**옵션** (타이틀 · 일시정지): 음악·효과음 음량(0–10), 난이도(쉬움: 받는 피해 ×0.5 / 보통 / 어려움: ×1.5), 화면 흔들림, 밝은 깜박임 줄이기(보스 피격 섬광·번개), 전체 화면, 조작 안내. ← → 로 바꾸면 바로 저장됩니다.
+
+**macOS 앱으로 내보내기:** `export_presets.cfg`에 macOS(universal) 설정이 있습니다. Godot 4.7.2 내보내기 템플릿을 설치한 뒤 실행하세요(템플릿은 Godot 에디터의 *편집기 → 내보내기 템플릿 관리*에서 받을 수 있습니다).
+
+```bash
+mkdir -p game/export && godot --headless --path game --export-release "macOS" export/RebirthProtocol.app
+```
 
 ## 조작
 
@@ -94,6 +103,20 @@ GDD와 다른 점: 뱅가드 2파츠 효과를 "대시 재사용 단축" 대신 
 | 이클립스 | 테라 팽골린 — 균열벽 너머 지하 분기 | 보스 3명 격파 | **얼티밋 아머 IX** · 확장 엔딩 |
 | 프래그먼트 Λ | 그래비티 앨버트로스 — 상층 중계기 (에어로 LEG 비행으로만 도달) | 보스 6명 + 이클립스 | 진엔딩 |
 
+**스테이지 연동 (GDD §5-4):** 보스를 쓰러뜨리면 다른 스테이지의 지형이 바뀝니다. 스테이지 선택 화면에 ▲(환경 변화)와 ◈(미확인 신호)로 표시되고, 바뀐 스테이지에 들어가면 안내가 뜹니다. 바뀌기 전에만 있는 보상은 없습니다.
+
+| 조건 | 바뀌는 곳 | 변화 |
+|---|---|---|
+| 펄스 시카다 격파 | 테라 팽골린 | 전력 복구 — 봉인 게이트가 열리고 자기부상 열차 발판 구간 개통, 끝에 HP 증가 |
+| 크라이오 나왈 격파 | 솔라 페넥 | 발전소 냉각 — 열기 분출구 9 → 5개, 숨은 통로 위 HP 증가 |
+| 그래비티 앨버트로스 격파 | 그래비티 앨버트로스 | 중력 안정화 — 상층(프래그먼트 Λ) 해치 개방 |
+| 뱅가드 ARM | 펄스 시카다 | 균열벽 뒤 재방문 HP 증가 |
+| 에어로 LEG | 크라이오 나왈 | 격납고 위 높은 선반의 재방문 HP 증가 |
+
+**배경:** 스테이지마다 다른 원경(데이터 도시 · 광학 보관소 · 궤도 조선소 · 사막 발전소 · 극지 바다 · 지하 철도 · 폭풍 변전소 · 디지털 코어), 2–3겹 패럴랙스.
+
+**사운드:** 효과음 37종, 음악 17곡(타이틀·선택·스토리·스테이지 8곡·보스 3곡·엔딩, 클리어·보스 등장 징글). 백그라운드 스레드에서 합성해 메인 스레드 비용은 프레임당 0.4ms 이하.
+
 - 이클립스: IX의 움직임을 따라 하는 미러 보스. 같은 무기를 3번 연속 맞으면 그 무기에 내성(ADAPT).
 - 프래그먼트 Λ: 코어가 열린 순간에만 피해. 2페이즈에 바닥에서 파편이 솟고 끌어당김.
 
@@ -104,12 +127,27 @@ GDD와 다른 점: 뱅가드 2파츠 효과를 "대시 재사용 단축" 대신 
 ## 테스트
 
 ```bash
-for t in run_tests armor_combos boss_hidden_test boss_solar_fennec_test boss_arca_test boss_pulse_cicada_test boss_cryo_narwhal_test boss_terra_pangolin_test boss_gravity_albatross_test; do godot --headless --fixed-fps 60 --path game -s res://tests/$t.gd | tail -1; done
+for t in run_tests armor_combos boss_hidden_test boss_solar_fennec_test boss_arca_test boss_pulse_cicada_test boss_cryo_narwhal_test boss_terra_pangolin_test boss_gravity_albatross_test stage_link_test backdrop_test audio_test; do godot --headless --fixed-fps 60 --path game -s res://tests/$t.gd | tail -1; done
 ```
 
 - `run_tests.gd` (114개): 이동·전투·아머·파트너·특수무기·기믹·저장, 그리고 **등록된 모든 스테이지와 보스를 자동으로 불러와 검사**하는 통합 테스트.
 - `armor_combos.gd`: 81조합 규칙 + 동시 물리 시뮬레이션.
 - `boss_*_test.gd` (7개, 313개 검사): 스테이지 구조, 뉴트럴 IX로 필수 경로 주파, 보스 패턴·페이즈·약점·경직 쿨다운·사망, 회피 가능성.
+- `stage_link_test.gd` (45개): 스테이지 연동 전·후 지형, 새 보상이 바뀐 뒤에만 닿는지(스크립트 플레이어로 실제 주파), 필수 경로 불변.
+- `backdrop_test.gd` (39개): 배경 8종 생성·전환·누수·깜박임 옵션·비용.
+- `audio_test.gd` (41개): 효과음·음악 전부 합성, 길이·무음·루프, 시작·프레임 비용.
+
+게임 흐름(main.gd)이 필요한 점검은 `-s` 대신 실행 인자로 돌립니다:
+
+```bash
+godot --headless --fixed-fps 60 --path game -- --flowcheck
+```
+
+```bash
+godot --headless --fixed-fps 60 --path game -- --perfcheck
+```
+
+`--flowcheck` (44개): 조건부 타일, `cleared:` 조건, 옵션 메뉴 입력·저장 값, 스테이지 선택 스크롤과 ▲ / ◈ 표시, READY·난이도·화면 흔들림, 일시정지 옵션, 보스 음악 전환. `--perfcheck`: 스테이지마다 10초 동안 달리고 쏘며 프레임 비용을 잽니다(헤드리스는 그리기 비용 제외, 창 모드에서는 그리기 호출 수도 표시).
 
 스크린샷:
 
@@ -132,9 +170,12 @@ godot --path game -- --gallery=/tmp/rp_gallery
 | `scripts/armor/armor_data.gd` | 파츠 정의와 81조합 스탯 계산 |
 | `scripts/player/` | 공용 몸체·이동·파티(player.gd), SABLE·ECHO 공격 모듈, 캐릭터별 그래픽 |
 | `scripts/combat/` | 버스터·ECHO 탄, 특수무기 6종(weapon_shot.gd), 적 탄 |
-| `scripts/level/` | ASCII 맵 로더와 기믹(균열벽·홀로그램·레이저·캡슐·체크포인트) |
-| `scripts/enemies/` | 워커, 터렛, 보스 프리즘 게코 |
-| `scripts/ui/` | HUD, 메뉴, 아머 랩 |
+| `scripts/level/` | ASCII 맵 로더(16×16 타일 청크로 나눠 그림)와 기믹, `backdrop_set.gd`·`backdrops/` 스테이지별 배경 |
+| `scripts/enemies/` | 워커, 터렛, 보스 공통 클래스(boss_base.gd)와 보스 8종 |
+| `scripts/audio/` | 효과음·음악 합성기와 시퀀서, 오리지널 곡 데이터 (`Audio` 오토로드) |
+| `scripts/core/autoloads.gd` | `-s` 테스트에서도 컴파일되는 Game·Audio 접근 도우미 |
+| `scripts/ui/` | HUD, 메뉴(스크롤·값 조절), 아머 랩, 스토리 화면 |
+| `scripts/debug/` | 스크린샷 투어·갤러리, 흐름·성능 점검 |
 | `tests/` | 헤드리스 자동 테스트 |
 
 ## 진행 상황 (GDD 8-3 체크리스트)
@@ -166,5 +207,16 @@ godot --path game -- --gallery=/tmp/rp_gallery
 - [x] 최종 구역 에덴 코어 · 아르카
 - [x] 엔딩 3종 · 프롤로그 · 중간 이벤트
 
-아직 없는 것: 보스 격파 후 다른 스테이지 지형이 바뀌는 연동(GDD §5-4), 스테이지별 배경, 사운드·음악, 정식 픽셀 아트, 전투 중 아머 교체.
+## 로드맵 6단계 (폴리싱)
+
+- [x] 스테이지 연동 5곳 (GDD §5-4) · 미확인 신호 / 환경 변화 표시
+- [x] 효과음 37종 · 음악 17곡 (코드 합성, 오리지널 곡)
+- [x] 스테이지별 배경 8종
+- [x] 옵션: 음량 · 난이도 3단계 · 화면 흔들림 · 깜박임 줄이기 · 전체 화면 · 조작 안내
+- [x] 연출: READY, 보스 등장 경고음·징글, 폭발·피격 화면 흔들림
+- [x] 성능: 타일 청크 그리기(화면 밖 생략), 스테이지별 프레임 비용 측정
+- [x] 스테이지 선택 목록 스크롤(스테이지가 늘어 화면을 넘던 문제 수정)
+- [x] macOS 내보내기 설정
+
+아직 없는 것: 실제 플레이로 맞춘 난이도·손맛 조정, 키 재배치, 정식 픽셀 아트, 전투 중 아머 교체, 서명·공증된 배포용 앱.
 

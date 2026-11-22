@@ -29,6 +29,7 @@ func _run() -> void:
 		await _check_stage_start()
 		await _check_shake()
 		await _check_pause_options()
+		await _check_boss_music()
 	print("%d passed, %d failed" % [_pass, _fail])
 	get_tree().quit(1 if _fail > 0 else 0)
 
@@ -232,6 +233,23 @@ func _check_pause_options() -> void:
 	main._resume()
 	await _frames(2)
 	_check(not get_tree().paused, "resume unpauses")
+	main.show_title()
+	await _frames(2)
+
+
+func _check_boss_music() -> void:
+	Game.new_game()
+	main.start_stage("prism_gecko")
+	await _frames(5)
+	_check(Audio.current_track == "prism_gecko", "stage track plays")
+	main._on_boss_trigger("main")
+	await _frames(2)
+	_check(Audio.current_track == "boss_intro", "boss intro sting on the boss door")
+	var t := 0.0
+	while t < 4.0 and Audio.current_track != "boss":
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	_check(Audio.current_track == "boss", "boss track follows the intro sting")
 	main.show_title()
 	await _frames(2)
 

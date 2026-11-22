@@ -111,7 +111,8 @@ func test_switching() -> void:
 	_check(_count(bs) == sub and Performance.get_monitor(Performance.OBJECT_NODE_COUNT) == nodes
 			and Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT) == orphans,
 			"24 theme switches leak no nodes (%d in backdrop, %d total)" % [sub, nodes])
-	_check(Performance.get_monitor(Performance.OBJECT_COUNT) == objects,
+	# <= : other autoloads (Audio's worker jobs) may free objects meanwhile.
+	_check(Performance.get_monitor(Performance.OBJECT_COUNT) <= objects,
 			"24 theme switches leak no objects (%d -> %d)" % [objects,
 			Performance.get_monitor(Performance.OBJECT_COUNT)])
 	bs.queue_free()

@@ -36,7 +36,9 @@ func _frames(n: int) -> void:
 
 
 func _shot(shot_name: String) -> void:
-	await RenderingServer.frame_post_draw
+	# Force a draw: macOS stops rendering a hidden / occluded window, and waiting
+	# for frame_post_draw would then hang the tour.
+	RenderingServer.force_draw(false)
 	var img := get_viewport().get_texture().get_image()
 	img.resize(img.get_width() * 3, img.get_height() * 3, Image.INTERPOLATE_NEAREST)
 	img.save_png(out_dir.path_join(shot_name + ".png"))
@@ -327,6 +329,24 @@ func _tour() -> void:
 	main.boss.take_damage(99)
 	await _frames(150)
 	await _shot("37_mission_complete")
+
+	# Phase 6 screens: options, and stage select mid-game (▲ changes, ◈ signal).
+	main.show_options(main.show_title)
+	await _frames(10)
+	await _shot("40_options")
+	for id in ["prism_gecko", "gravity_albatross", "solar_fennec", "cryo_narwhal", "pulse_cicada"]:
+		Game.mark_cleared(id)
+	Game.set_flag("mid_event")
+	main.show_select()
+	main._menu.selected = 5
+	main._menu._refresh()
+	await _frames(10)
+	await _shot("41_stage_select_progress")
+	main.start_stage("terra_pangolin")
+	await _frames(10)
+	_teleport(Vector2(109 * 16 + 8, 18 * 16))
+	await _frames(40)
+	await _shot("42_terra_maglev_open")
 	get_tree().quit()
 
 

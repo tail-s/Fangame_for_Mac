@@ -41,6 +41,8 @@ var _shake_time := 0.0
 var _shake_total := 0.0
 var _shake_strength := 0.0
 var _last_hp := -1
+## Boss track that follows the boss_intro sting.
+var _after_intro := ""
 
 
 func _ready() -> void:
@@ -49,6 +51,7 @@ func _ready() -> void:
 	_build_backdrop()
 	Game.loadout_changed.connect(_on_loadout_changed)
 	Game.settings_changed.connect(_on_settings_changed)
+	Audio.music_finished.connect(_on_music_finished)
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--autoshot=") or arg.begins_with("--gallery="):
 			Game.save_enabled = false
@@ -200,7 +203,7 @@ func _on_option_choice(id: String, back: Callable) -> void:
 
 func _show_controls(back: Callable) -> void:
 	var rows := [
-		["이동", "← →  /  스틱 · 십자키"], ["점프", "Z · Space  /  A"], ["공격 (길게: 차지)", "X · J  /  X"],
+		["이동", "← → · A D  /  스틱 · 십자키"], ["점프", "Z · Space  /  A"], ["공격 (길게: 차지)", "X · J  /  X"],
 		["대시", "C · K · Shift  /  B"], ["필살기", "V · L  /  Y"], ["특수무기 전환", "Q · E  /  LB · RB"],
 		["캐릭터 교대 · 태그", "Tab · F  /  LT"], ["아머 랩 (체크포인트)", "↑"], ["일시정지", "Esc · P  /  Start"],
 		["체크포인트부터 다시", "R  /  Back"],
@@ -657,14 +660,23 @@ func _on_boss_trigger(kind: String) -> void:
 	Audio.sfx("door")
 	Audio.sfx("warning")
 	Audio.music("boss_intro")
+	if kind == "hidden":
+		_after_intro = "hidden_boss"
+	else:
+		_after_intro = "final_boss" if stage.get("final", "") == "true" else "boss"
 	var gen := _generation
 	await get_tree().create_timer(1.4).timeout
 	if gen == _generation and hud != null:
 		hud.show_message("")
-		if kind == "hidden":
-			Audio.music("hidden_boss")
-		else:
-			Audio.music("final_boss" if stage.get("final", "") == "true" else "boss")
+	# Fallback when no audio device consumes the sting (it then never "finishes").
+	await get_tree().create_timer(1.4).timeout
+	if gen == _generation and _in_boss and Audio.current_track in ["boss_intro", ""]:
+		Audio.music(_after_intro)
+
+
+func _on_music_finished(track: String) -> void:
+	if track == "boss_intro" and _in_boss and _after_intro != "":
+		Audio.music(_after_intro)
 
 
 func _on_boss_defeated() -> void:

@@ -14,7 +14,7 @@ const C_TEXT := Color("d7edf3")
 const C_DIM := Color("6f8fae")
 const C_ACCENT := Color("3de0ee")
 const ROOMY_MAX := 5
-const COMPACT_ROWS := 8
+const COMPACT_ROWS := 7
 const COMPACT_STEP := 13
 
 var title := ""
@@ -56,9 +56,16 @@ func _ready() -> void:
 			var note := _label(it.get("note", ""), 7, Vector2(0, 93 + i * 22), C_DIM)
 			_rows.append([row, note])
 	if _compact():
-		_detail = _label("", 8, Vector2(0, 180), C_DIM)
-		_more_up = _label("▲", 7, Vector2(0, 63), C_DIM)
-		_more_down = _label("▼", 7, Vector2(0, 63 + (COMPACT_ROWS + 1) * COMPACT_STEP - 2), C_DIM)
+		# Selected item's note: up to two lines between the list and the footer.
+		_detail = _label("", 7, Vector2(16, 172), Color("a9c4d6"))
+		_detail.size = Vector2(352, 24)
+		_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_detail.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_more_up = _label("▲", 7, Vector2(0, 74), C_DIM)
+		_more_down = _label("▼", 7, Vector2(0, 72 + (COMPACT_ROWS - 1) * COMPACT_STEP + 2), C_DIM)
+		for l in [_more_up, _more_down]:
+			l.size.x = 352
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_label(footer, 8, Vector2(0, 200), C_DIM)
 	_refresh()
 

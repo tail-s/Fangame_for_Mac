@@ -770,6 +770,7 @@ func _process_attack(delta: float) -> void:
 			Autoloads.sfx("charge_full")
 	elif charging:
 		charging = false
+		Autoloads.stop_sfx("charge")
 		if charge_time >= charge_lv2_time:
 			_fire(2)
 		elif charge_time >= charge_lv1_time:

@@ -20,6 +20,11 @@ length (missing cells are empty).
 | `hidden_require` | `bosses:N` (N stage bosses beaten) and/or `+eclipse` |
 | `require` | stage locked on stage select until met (same syntax) |
 | `final` | `true` for the final stage (its clear plays the ending) |
+| `alt` | repeatable: `<char> <requirement> <before> <after>` — every `<char>` in the map becomes `<after>` when the requirement is met, otherwise `<before>` (GDD §5-4 cross-stage changes) |
+| `change` | repeatable: `<requirement> <text>` — Korean note shown on stage select (▲) and as a toast on entry when met |
+
+Requirements: `bosses:N`, `cleared:<stage id>`, `+eclipse` / `+fragment`, joined with `+`.
+Cross-stage rule: nothing may exist only in the *before* layout (a boss clear must never take a reward away), and the required route must not change.
 
 ## Tiles
 
@@ -39,6 +44,7 @@ length (missing cells are empty).
 | `\|` | updraft lift — pushes the player up |
 | `i` | ice (solid) — slippery ground |
 | `e` | electric floor (solid) — charges on a beat and hurts on top |
+| `g` | sealed gate (solid; yellow stripes and a lock) — usually an `@alt` placeholder that opens later |
 | `c` | crumbling floor — falls 0.5 s after you stand on it, returns after 4 s |
 | `m` / `n` | moving platform run: slides left-right / bobs up-down (48 px, 3.2 s) |
 | `P` | player spawn |
