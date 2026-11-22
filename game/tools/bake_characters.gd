@@ -30,6 +30,7 @@ func _init() -> void:
 		"ix": preload("res://tools/sprites/ix_model.gd").new(),
 		"sable": preload("res://tools/sprites/sable_model.gd").new(),
 		"echo": preload("res://tools/sprites/echo_model.gd").new(),
+		"eclipse": preload("res://tools/sprites/eclipse_model.gd").new(),
 	}
 	for id in models:
 		_bake(id, models[id])

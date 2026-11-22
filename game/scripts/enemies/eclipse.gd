@@ -17,6 +17,11 @@ extends "res://scripts/enemies/boss_base.gd"
 ## Moves kinematically inside `arena`; the body centre sits H px above the feet.
 
 const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
+## Baked pixel-art sheets (tools/sprites/eclipse_model.gd -> art/characters/eclipse/).
+const SpriteVisual = preload("res://scripts/player/sprite_visual.gd")
+## The enemy CanvasGroup shader (pixel_shade) leaves pixels at this alpha as they
+## are: the baked sprites already carry their own outline and shading.
+const SPRITE_ALPHA := 0.98
 
 enum S { INTRO, IDLE, RUN_GUN, DASH_JUMP, WALL_CLIMB, CHARGE, MIRROR_RUSH }
 
@@ -40,8 +45,6 @@ const KEEP_AWAY := 64.0
 const LEARN_HITS := 3
 const RESIST_MULT := 0.25
 
-const C_FRAME := Color("1a1228")
-const C_ARMOR := Color("45325f")
 const C_PLATE := Color("7352a8")
 const C_TRIM := Color("c6a6ff")
 const C_VISOR := Color("ff4fd8")
@@ -83,12 +86,12 @@ var _adapt_fx := 0.0
 var _break_fx := 0.0
 var _release_fx := 0.0
 var _death_t0 := -1.0
-# draw helpers state
-var _df := 1.0
-var _doff := Vector2.ZERO
-var _flat := Color(0, 0, 0, 0)
-var _lean := 0.0
-var _uy := 0.0
+# sprite state (visual only): animation, sheet frame, buster arm shown, drawn facing
+var _anim := "idle"
+var _anim_t0 := 0.0
+var _frame := 0
+var _aim := false
+var _vf := 1.0
 
 
 ## Buster round: violet tap shot, or a big charged shot (`big`).
@@ -547,7 +550,7 @@ func _tick_trail(delta: float) -> void:
 	_trail_clock = 0.04
 	var moving := vel.length() > 20.0
 	if _is_dashing() or (phase2 and moving):
-		_trail.push_front([position, facing])
+		_trail.push_front([position, _vf, _frame, _aim])
 		if _trail.size() > 5:
 			_trail.pop_back()
 	elif not _trail.is_empty():
@@ -570,6 +573,7 @@ func _weapon_color(id: String) -> Color:
 # --- drawing ------------------------------------------------------------------------
 
 func _boss_draw(white: bool) -> void:
+	_pick_pose()
 	var alpha := 1.0
 	if state == S.INTRO:
 		alpha = clampf(1.0 - intro_time / maxf(_intro_total, 0.01), 0.0, 1.0)
@@ -594,20 +598,22 @@ func _boss_draw(white: bool) -> void:
 	# Eclipse corona: a soft violet glow behind the dark body, so it reads on the
 	# dark arena background (a ring of light in phase 2).
 	var corona := 0.16 + 0.06 * sin(t * 3.0)
-	draw_circle(Vector2(0, -2), 16.0, Color(C_PLATE, corona * 0.45 * alpha))
-	draw_circle(Vector2(0, -2), 11.0, Color(C_PLATE, corona * 0.6 * alpha))
+	draw_circle(Vector2(0, -3), 18.0, Color(C_PLATE, corona * 0.4 * alpha))
+	draw_circle(Vector2(0, -3), 12.0, Color(C_PLATE, corona * 0.6 * alpha))
 	if phase2:
-		draw_arc(Vector2(0, -2), 16.5, 0.0, TAU, 28, Color(C_VISOR, (0.3 + 0.2 * sin(t * 9.0)) * alpha), 1.0)
+		draw_arc(Vector2(0, -3), 18.5, 0.0, TAU, 28, Color(C_VISOR, (0.3 + 0.2 * sin(t * 9.0)) * alpha), 1.0)
 
-	# Afterimages.
+	# Afterimages: flat-tinted silhouettes of the frames it just passed through.
 	for i in _trail.size():
 		var e: Array = _trail[i]
-		_draw_body(e[0] - position, e[1], Color(C_VISOR if phase2 else C_TRIM, (0.35 - i * 0.06) * alpha))
+		_draw_body(e[0] - position, e[1], Color(C_VISOR if phase2 else C_TRIM, (0.35 - i * 0.06) * alpha),
+				1.0, e[2], e[3])
 
 	var flat := Color(0, 0, 0, 0)
 	if white:
 		flat = Color.WHITE
-	_draw_body(Vector2.ZERO, facing, flat, alpha)
+	_draw_body(Vector2.ZERO, _vf, flat, alpha)
+	_draw_muzzle(alpha)
 
 	_draw_charge()
 	_draw_learning()
@@ -616,90 +622,109 @@ func _boss_draw(white: bool) -> void:
 			draw_circle(Vector2(-facing * (9.0 + i * 4.0), H - 2.0 - i), 1.5 - i * 0.3, Color(C_TRIM, 0.5 - i * 0.15))
 
 
-## The mirror hunter: dark violet armor, angular helmet with a forward crest and
-## swept back fins, one visor slit, an eclipsed core on the chest, buster arm.
-## Design space: feet at y = 0, facing right (x > 0 is forward).
-func _draw_body(off: Vector2, f: float, flat := Color(0, 0, 0, 0), alpha := 1.0) -> void:
-	_doff = off
-	_df = f
-	_flat = flat
-	var a := func(c: Color) -> Color: return Color(c, c.a * alpha)
-	var dashing := _is_dashing()
+## Picks the sheet animation for the current state (same names as the player's
+## sprites), its frame, whether the buster arm is out and the drawn facing.
+func _pick_pose() -> void:
+	var meta: Dictionary = SpriteVisual.sheet("eclipse").meta
+	var a := "idle"
+	_vf = facing
 	var crouch := (state == S.DASH_JUMP and _step == 0) or (state == S.MIRROR_RUSH and _step == 0)
-	_lean = 2.0 if dashing else 0.0
-	_uy = 3.0 if crouch or (dashing and grounded) else 0.0
-	var cling := state == S.WALL_CLIMB and _step == 2
-	var moving := grounded and absf(vel.x) > 1.0 and not dashing
-
-	# Legs.
-	var front := 2.0
-	var back := -3.0
-	var lf := 0.0
-	var lb := 0.0
-	if dashing and grounded:
-		front = 5.0
-		back = -6.0
-		lb = 2.0
+	if _death_t0 >= 0.0:
+		a = "hurt"
+	elif state == S.WALL_CLIMB and _step in [1, 2] and not grounded:
+		# On the wall it faces away from it, back hand on the wall (like the player).
+		_vf = -_side
+		if _step == 2 or (wall == int(_side) and vel.y >= 0.0):
+			a = "wall_slide"
+		elif _kick_lock > 0.0 or wall == int(_side):
+			a = "wall_kick"
+		else:
+			a = _air_anim()
+	elif _air_dash > 0.0:
+		a = "air_dash"
 	elif not grounded:
-		front = 3.0
-		back = -2.0
-		lf = 4.0
-		lb = 1.0
-	elif moving:
-		var s := sin(t * 14.0)
-		front = 1.0 + s * 3.5
-		back = -2.0 - s * 3.5
-		lf = maxf(0.0, -s) * 2.0
-		lb = maxf(0.0, s) * 2.0
-	_leg(back, lb, a.call(C_ARMOR))
-	_leg(front, lf, a.call(C_PLATE.darkened(0.15)))
+		if state == S.DASH_JUMP and _step == 2 and _bounces == 0 and vel.y < -120.0:
+			a = "wall_kick"  # just bounced off the arena wall
+		else:
+			a = _air_anim()
+	elif crouch:
+		a = "land"
+	elif _is_dashing():
+		a = "dash"
+	elif absf(vel.x) > 1.0:
+		a = "run"
+	if a != _anim:
+		_anim = a
+		_anim_t0 = t
+	var info: Dictionary = meta.anims[_anim]
+	var frames: Array = info.frames
+	var i := int((t - _anim_t0) * float(info.fps))
+	i = i % frames.size() if info.loop else mini(i, frames.size() - 1)
+	_frame = int(frames[i])
+	_aim = _anim not in ["hurt", "wall_kick"] and (state in [S.RUN_GUN, S.CHARGE] or _muzzle_fx > 0.0
+			or (state == S.WALL_CLIMB and _step == 2) or (state == S.DASH_JUMP and _step == 2))
 
-	# Back pauldron, chest with a darker V plate, hips.
-	_poly_up([Vector2(-5, -21), Vector2(-12, -25), Vector2(-9, -17)], a.call(C_PLATE.darkened(0.2)))
-	_poly_up([Vector2(-4, -11), Vector2(4, -11), Vector2(7, -18), Vector2(5, -22), Vector2(-5, -22),
-			Vector2(-7, -18)], a.call(C_ARMOR))
-	_poly_up([Vector2(-5, -22), Vector2(5, -22), Vector2(2, -14), Vector2(-2, -14)], a.call(C_PLATE.darkened(0.1)))
-	_box_up(-5, -12, 10, 2, a.call(C_FRAME))
-	# Eclipsed core: a dark disc over a bright corona.
-	var core_c := C_HOT if phase2 else C_TRIM
-	_circle_up(0.0, -18.5, 2.6, a.call(core_c))
-	_circle_up(0.7, -18.7, 2.0, a.call(C_FRAME))
 
-	# Head: back fins, helmet, forward crest, single visor slit, chin guard.
-	_poly_up([Vector2(-3, -28), Vector2(-13, -31), Vector2(-6, -24)], a.call(C_PLATE))
-	_poly_up([Vector2(-2, -30), Vector2(-10, -35), Vector2(-5, -28)], a.call(C_PLATE.darkened(0.25)))
-	_poly_up([Vector2(-5, -21), Vector2(5, -21), Vector2(7, -25), Vector2(5, -30), Vector2(-2, -32),
-			Vector2(-6, -27)], a.call(C_PLATE))
-	_poly_up([Vector2(-5, -21), Vector2(5, -21), Vector2(6, -23), Vector2(-6, -24)], a.call(C_ARMOR))
-	_poly_up([Vector2(-2, -32), Vector2(5, -30), Vector2(4, -29), Vector2(-2, -31)], a.call(C_TRIM))
-	_poly_up([Vector2(0, -31), Vector2(9, -35), Vector2(4, -29)], a.call(C_TRIM))
-	var visor := C_HOT if phase2 and int(t * 12.0) % 2 == 0 else C_VISOR
-	_poly_up([Vector2(-1, -27), Vector2(8, -27.5), Vector2(7, -25), Vector2(-1, -25.5)], a.call(C_FRAME))
-	_poly_up([Vector2(0, -26.8), Vector2(8, -27.2), Vector2(7.5, -25.8), Vector2(0, -26)], a.call(visor))
-	_poly_up([Vector2(3, -22), Vector2(7, -24), Vector2(6, -21)], a.call(C_PLATE))
+func _air_anim() -> String:
+	if vel.y < -90.0:
+		return "jump"
+	if vel.y < 70.0:
+		return "apex"
+	return "fall"
 
-	# Front arm: buster forward while aiming, hand on the wall while clinging.
-	if cling:
-		_box_up(-10, -24, 3, 7, a.call(C_PLATE))
-	var aiming := state in [S.RUN_GUN, S.CHARGE] or cling or _muzzle_fx > 0.0 \
-			or (state == S.DASH_JUMP and _step == 2)
-	if aiming:
-		_box_up(2, -17, 9, 4, a.call(C_PLATE))
-		_box_up(10, -18, 6, 6, a.call(C_FRAME))
-		_box_up(15, -16.5, 1, 3, a.call(C_VISOR))
-		if _muzzle_fx > 0.0:
-			_circle_up(17.0, -15.0, 3.0, a.call(C_HOT))
-		elif state == S.RUN_GUN and _shots_left > 0 and _shot_timer < 0.14 and int(t * 30.0) % 2 == 0:
-			_circle_up(17.0, -15.0, 2.0, a.call(C_VISOR))  # glint before each shot
+
+## One body sprite. `off` is relative to the body centre, `f` the facing;
+## `flat` (alpha > 0) draws the white silhouette row tinted with that colour.
+## frame < 0 uses the current pose.
+func _draw_body(off: Vector2, f: float, flat := Color(0, 0, 0, 0), alpha := 1.0, frame := -1,
+		aim := false) -> void:
+	var art := SpriteVisual.sheet("eclipse")
+	var meta: Dictionary = art.meta
+	if frame < 0:
+		frame = _frame
+		aim = _aim
+	var cw: float = meta.cell[0]
+	var ch: float = meta.cell[1]
+	var row := "flat" if flat.a > 0.0 else ("limit" if phase2 else "eclipse")
+	var vi := maxi((meta.variants as Array).find(row), 0)
+	var col: Color
+	if flat.a > 0.0:
+		col = Color(flat, flat.a * alpha)
 	else:
-		_box_up(3, -18, 4, 7, a.call(C_PLATE))
-		_box_up(3, -12, 4, 3, a.call(C_FRAME))
+		# Opaque sprites sit exactly at SPRITE_ALPHA; fading ones stay translucent.
+		var a := SPRITE_ALPHA * alpha
+		col = Color(1, 1, 1, SPRITE_ALPHA if a >= 0.8 else a)
+	var tex: Texture2D = art.tex["aim" if aim else "full"]
+	draw_set_transform((off + Vector2(0, H)).round(), 0.0, Vector2(f, 1.0))
+	draw_texture_rect_region(tex, Rect2(-float(meta.origin[0]), -float(meta.origin[1]), cw, ch),
+			Rect2(frame * cw, vi * ch, cw, ch), col)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Buster tip of the current frame (local, facing applied).
+func _tip() -> Vector2:
+	var meta: Dictionary = SpriteVisual.sheet("eclipse").meta
+	var sh: Array = meta.shoulder[_frame]
+	var tip: Array = meta.extras.buster.tip
+	return Vector2((float(sh[0]) + float(tip[0])) * _vf, float(sh[1]) + float(tip[1]) + H)
+
+
+## Muzzle flash after a shot, and a glint before each tap shot.
+func _draw_muzzle(alpha: float) -> void:
+	if not _aim:
+		return
+	var m := _tip() + Vector2(_vf, 0.0)
+	if _muzzle_fx > 0.0:
+		draw_circle(m, 4.0, Color(C_VISOR, 0.5 * alpha))
+		draw_circle(m, 2.5, Color(C_HOT, alpha))
+	elif state == S.RUN_GUN and _shots_left > 0 and _shot_timer < 0.14 and int(t * 30.0) % 2 == 0:
+		draw_circle(m, 2.0, Color(C_VISOR, alpha))
 
 
 func _draw_charge() -> void:
 	if _charge <= 0.0:
 		return
-	var m := _muzzle() - position
+	var m := _tip() + Vector2(_vf, 0.0)
 	var k := _charge
 	var c := C_HOT if k > 0.85 and int(t * 20.0) % 2 == 0 else C_VISOR
 	# Converging sparks, a growing orb and a body ring: big, readable telegraph.
@@ -734,45 +759,3 @@ func _draw_learning() -> void:
 			var ang := TAU * i / 6.0 + 0.4
 			var at := Vector2(cos(ang), sin(ang)) * (18.0 + 14.0 * k)
 			draw_line(at, at + Vector2(cos(ang + 1.2), sin(ang + 1.2)) * 4.0, Color(C_HOT, 1.0 - k), 1.0)
-
-
-func _p(x: float, y: float) -> Vector2:
-	return _doff + Vector2(x * _df, y + H)
-
-
-func _up(x: float, y: float) -> Vector2:
-	return _p(x + _lean, y + _uy)
-
-
-func _col(c: Color) -> Color:
-	return Color(_flat, _flat.a * c.a) if _flat.a > 0.0 else c
-
-
-func _poly_up(points: Array, c: Color) -> void:
-	var arr := PackedVector2Array()
-	for q in points:
-		arr.append(_up(q.x, q.y))
-	draw_colored_polygon(arr, _col(c))
-
-
-func _box_up(x: float, y: float, w: float, h: float, c: Color) -> void:
-	var a := _up(x, y)
-	var b := _up(x + w, y)
-	draw_rect(Rect2(Vector2(minf(a.x, b.x), a.y), Vector2(absf(b.x - a.x), h)), _col(c))
-
-
-func _circle_up(x: float, y: float, r: float, c: Color) -> void:
-	draw_circle(_up(x, y), r, _col(c))
-
-
-## Leg in design space (not affected by the upper-body crouch / lean).
-func _leg(x: float, lift: float, c: Color) -> void:
-	var shin := PackedVector2Array([_p(x - 2, -11 - lift), _p(x + 2, -11 - lift), _p(x + 2, -6 - lift),
-			_p(x - 2, -6 - lift)])
-	draw_colored_polygon(shin, _col(c))
-	var boot := PackedVector2Array([_p(x - 3, -7 - lift), _p(x + 3, -7 - lift), _p(x + 6, -lift),
-			_p(x - 3, -lift)])
-	draw_colored_polygon(boot, _col(c.darkened(0.25)))
-	if _flat.a <= 0.0:
-		var fin := PackedVector2Array([_p(x - 2, -11 - lift), _p(x + 3, -10 - lift), _p(x - 1, -8 - lift)])
-		draw_colored_polygon(fin, Color(C_PLATE, c.a))

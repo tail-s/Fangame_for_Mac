@@ -88,8 +88,14 @@ class ShardShot extends "res://scripts/combat/enemy_shot.gd":
 	func _draw() -> void:
 		var d := velocity.normalized() if velocity.length() > 1.0 else Vector2.RIGHT
 		var n := Vector2(-d.y, d.x)
-		draw_colored_polygon(PackedVector2Array([d * 6.0, n * 2.4, -d * 4.0, -n * 2.4]), tint)
-		draw_line(-d * 2.0, d * 4.5, Color.WHITE, 1.0)
+		# Two-tone splinter (lit half on top), white core line, glinting tip.
+		var up := n.y < 0.0
+		var lit := tint.lightened(0.4)
+		var shade := tint.darkened(0.3)
+		draw_colored_polygon(PackedVector2Array([d * 6.0, n * 2.4, -d * 4.0]), lit if up else shade)
+		draw_colored_polygon(PackedVector2Array([d * 6.0, -d * 4.0, -n * 2.4]), shade if up else lit)
+		draw_line(-d * 2.0, d * 4.0, Color.WHITE, 1.0)
+		draw_rect(Rect2((d * 5.0).floor(), Vector2(1, 1)), Color.WHITE)
 
 
 func _init() -> void:
@@ -560,7 +566,7 @@ func _boss_draw(white: bool) -> void:
 		var h := fmod(sin(i * 12.9898 + floorf(t * 8.0) * 78.233) * 43758.5453, 1.0)
 		var ang := TAU * absf(h) + i
 		var at := bob + Vector2(cos(ang), sin(ang)) * (18.0 + 14.0 * absf(fmod(h * 7.0, 1.0)))
-		draw_rect(Rect2(at, Vector2(2, 2)), Color(C_GLITCH if i % 2 == 0 else tint, 0.5 * alpha))
+		draw_rect(Rect2(at.floor(), Vector2(2, 2)), Color(C_GLITCH if i % 2 == 0 else tint, 0.5 * alpha))
 
 	# Shards behind the core (upper half of the tilted orbit).
 	for i in shard_count:
@@ -568,36 +574,16 @@ func _boss_draw(white: bool) -> void:
 		if o.y < 0.0:
 			_draw_shard(bob + o, i, white, tint, alpha)
 
-	# Core: a faceted diamond with an etched Λ.
 	var glow := 0.5 + 0.5 * sin(t * 10.0)
 	var open_k := _spread
 	draw_circle(bob, 9.0 + 3.0 * open_k, Color(tint, (0.12 + 0.25 * open_k * glow) * alpha))
-	var w := 6.0 * absf(cos(t * 2.0)) + 2.0
-	var core_c := Color.WHITE if white else C_CORE.lerp(C_DEEP, 0.55 * (1.0 - open_k))
-	draw_colored_polygon(PackedVector2Array([bob + Vector2(0, -9), bob + Vector2(w, 0), bob + Vector2(0, 9),
-			bob + Vector2(-w, 0)]), Color(core_c, alpha))
-	draw_polyline(PackedVector2Array([bob + Vector2(-3, 4), bob + Vector2(0, -4), bob + Vector2(3, 4)]),
-			Color(C_DEEP if open_k > 0.5 else tint, alpha), 1.0)
-	draw_line(bob + Vector2(-1, -1), bob + Vector2(-4, 4), Color(C_DEEP if open_k > 0.5 else tint, alpha), 1.0)
+	_draw_core(bob, white, tint, alpha)
+	_draw_shell(bob, white, tint, alpha)
 
-	# Closed shell: a hexagonal crystal cage over the core.
-	var shell_a := (1.0 - open_k) * alpha
-	if shell_a > 0.02:
-		var hex := PackedVector2Array()
-		for i in 7:
-			var ang := TAU * i / 6.0 + _spin * 0.3
-			hex.append(bob + Vector2(cos(ang), sin(ang)) * SHELL_R)
-		var shell_fill := Color.WHITE if white else C_DEEP
-		draw_colored_polygon(hex.slice(0, 6), Color(shell_fill, 0.55 * shell_a))
-		draw_polyline(hex, Color(tint, shell_a), 1.0)
-		for i in 6:
-			draw_line(hex[i], bob + (hex[i] - bob) * 0.45, Color(tint, 0.5 * shell_a), 1.0)
 	if _block_fx > 0.0:
 		var k := _block_fx / 0.3
-		var hex2 := PackedVector2Array()
-		for i in 7:
-			var ang := TAU * i / 6.0 + _spin * 0.3
-			hex2.append(bob + Vector2(cos(ang), sin(ang)) * (SHELL_R + 2.0))
+		var hex2 := _hex(bob, SHELL_R + 2.0)
+		hex2.append(hex2[0])
 		draw_polyline(hex2, Color(1, 1, 1, k), 2.0)
 		draw_line(bob + Vector2(-4, -4), bob + Vector2(4, 4), Color(C_WARN, k), 1.0)
 		draw_line(bob + Vector2(-4, 4), bob + Vector2(4, -4), Color(C_WARN, k), 1.0)
@@ -608,12 +594,97 @@ func _boss_draw(white: bool) -> void:
 		if o.y >= 0.0:
 			_draw_shard(bob + o, i, white, tint, alpha)
 
-	# Exposed core: pulsing target ring.
+	# Exposed core: pulsing target ring with four brackets.
 	if core_open:
-		draw_arc(bob, 11.0 + 2.0 * glow, 0.0, TAU, 20, Color(C_CORE, 0.6 * alpha), 1.0)
+		var rr := 11.0 + 2.0 * glow
+		draw_arc(bob, rr, 0.0, TAU, 20, Color(C_CORE, 0.6 * alpha), 1.0)
+		for k in 4:
+			var a := TAU * k / 4.0 + PI / 4.0
+			draw_arc(bob, rr + 3.0, a - 0.25, a + 0.25, 4, Color(tint, 0.8 * alpha), 1.0)
 	if _p2_fx > 0.0:
 		var k := 1.0 - _p2_fx
 		draw_arc(Vector2.ZERO, 10.0 + 40.0 * k, 0.0, TAU, 6, Color(C_P2, 1.0 - k), 2.0)
+
+
+## The crystal core: a turning octahedron seen from the side. Four facets (lit
+## upper left to dark lower right) around a ridge that slides with the turn, an
+## etched Λ, a pale heart and a glint. Dim while the shell is closed.
+func _draw_core(bob: Vector2, white: bool, tint: Color, alpha: float) -> void:
+	var open_k := _spread
+	var w := 6.0 * absf(cos(t * 2.0)) + 2.0
+	var base := C_CORE.lerp(C_DEEP, 0.55 * (1.0 - open_k))
+	var c_hi := base.lightened(0.4)
+	var c_lo := base.lerp(tint, 0.4).darkened(0.1)
+	var c_sh := base.lerp(C_DEEP, 0.5)
+	if white:
+		base = Color.WHITE
+		c_hi = Color.WHITE
+		c_lo = Color.WHITE
+		c_sh = Color.WHITE
+	var top := bob + Vector2(0, -9)
+	var bot := bob + Vector2(0, 9)
+	var lt := bob + Vector2(-w, 0)
+	var rt := bob + Vector2(w, 0)
+	if w < 3.5:
+		# Edge-on: just a lit and a shaded half.
+		_poly([top, bob + Vector2(0, 1), bot, lt], Color(c_hi, alpha))
+		_poly([top, rt, bot, bob + Vector2(0, 1)], Color(c_sh, alpha))
+	else:
+		var ridge := bob + Vector2(signf(sin(t * 2.0)) * (w - 2.0) * 0.45, -1.0)
+		_poly([top, ridge, lt], Color(c_hi, alpha))
+		_poly([top, rt, ridge], Color(base, alpha))
+		_poly([lt, ridge, bot], Color(c_lo, alpha))
+		_poly([ridge, rt, bot], Color(c_sh, alpha))
+	if white:
+		return
+	# Heart of light, brighter when exposed.
+	var heart := C_CORE if open_k > 0.5 else tint
+	draw_rect(Rect2(bob + Vector2(-1, -1), Vector2(2, 3)), Color(heart, alpha))
+	# Etched Λ.
+	var etch := Color(C_DEEP if open_k > 0.5 else tint, alpha)
+	draw_polyline(PackedVector2Array([bob + Vector2(-3, 5), bob + Vector2(0, -4), bob + Vector2(3, 5)]), etch, 1.0)
+	draw_line(bob + Vector2(-1, -1), bob + Vector2(-3, 3), etch, 1.0)
+	# Glint on the lit facet.
+	draw_rect(Rect2(bob + Vector2(-minf(w, 4.0) * 0.5 - 1.0, -5.0), Vector2(1, 2)), Color(1, 1, 1, alpha))
+
+
+## Closed shell: a hexagonal crystal cage. Translucent panes, a 2 px frame shaded
+## per edge (lit on top, dark underneath), pale nodes on the corners.
+func _draw_shell(bob: Vector2, white: bool, tint: Color, alpha: float) -> void:
+	var shell_a := (1.0 - _spread) * alpha
+	if shell_a <= 0.02:
+		return
+	var outer := _hex(bob, SHELL_R)
+	var inner := _hex(bob, SHELL_R - 2.0)
+	var shell_fill := Color.WHITE if white else C_DEEP
+	draw_colored_polygon(inner, Color(shell_fill, 0.55 * shell_a))
+	for i in 6:
+		var j := (i + 1) % 6
+		draw_line(inner[i], bob + (inner[i] - bob) * 0.45, Color(tint, 0.5 * shell_a), 1.0)
+		var mid_y := (outer[i].y + outer[j].y) * 0.5 - bob.y
+		var c := tint
+		if mid_y < -4.0:
+			c = tint.lightened(0.45)
+		elif mid_y > 4.0:
+			c = tint.darkened(0.4)
+		if white:
+			c = Color.WHITE
+		_poly([outer[i], outer[j], inner[j], inner[i]], Color(c, shell_a))
+	for i in 6:
+		var p := outer[i].lerp(inner[i], 0.5).floor()
+		draw_rect(Rect2(p - Vector2(1, 1), Vector2(2, 2)), Color(Color.WHITE if white else C_CORE, shell_a))
+
+
+func _hex(center: Vector2, r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in 6:
+		var ang := TAU * i / 6.0 + _spin * 0.3
+		pts.append(center + Vector2(cos(ang), sin(ang)) * r)
+	return pts
+
+
+func _poly(points: Array, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(points), c)
 
 
 func _draw_shard(at: Vector2, i: int, white: bool, tint: Color, alpha: float) -> void:
@@ -621,15 +692,31 @@ func _draw_shard(at: Vector2, i: int, white: bool, tint: Color, alpha: float) ->
 	if state == S.VOLLEY and i >= _ammo:
 		return
 	var d := at.normalized() if at.length() > 0.1 else Vector2.RIGHT
-	var n := Vector2(-d.y, d.x)
 	var hot := state == S.VOLLEY and _step == 0 and int(t * 20.0) % 2 == 0
 	if state == S.VOLLEY and _step < 2:
 		d = (_to_local_pt(_aim) - at).normalized()  # shards point at the target
-		n = Vector2(-d.y, d.x)
 	var c := Color.WHITE if white or hot else (tint if i % 2 == 0 else C_GLITCH)
-	draw_colored_polygon(PackedVector2Array([at + d * 7.0, at + n * 2.6, at - d * 4.0, at - n * 2.6]),
-			Color(c, alpha))
-	draw_line(at - d * 2.0, at + d * 5.0, Color(1, 1, 1, 0.7 * alpha), 1.0)
+	_crystal(at, d, c, alpha, white or hot)
+
+
+## Two-tone crystal splinter along `d`: lit and shaded halves, a bright core line
+## and a glint on the tip (orbiting shards and the death shatter).
+func _crystal(at: Vector2, d: Vector2, c: Color, alpha: float, flat := false) -> void:
+	var n := Vector2(-d.y, d.x)
+	var tip := at + d * 7.0
+	var tail := at - d * 4.0
+	var side_a := at + n * 2.6
+	var side_b := at - n * 2.6
+	# The half facing up is the lit one.
+	var up_a := n.y < 0.0
+	var lit := c if flat else c.lightened(0.4)
+	var shade := c if flat else c.darkened(0.3)
+	draw_colored_polygon(PackedVector2Array([tip, side_a, tail]), Color(lit if up_a else shade, alpha))
+	draw_colored_polygon(PackedVector2Array([tip, tail, side_b]), Color(shade if up_a else lit, alpha))
+	if flat:
+		return
+	draw_line(at - d * 1.5, at + d * 4.5, Color(1, 1, 1, 0.7 * alpha), 1.0)
+	draw_rect(Rect2((at + d * 5.5).floor(), Vector2(1, 1)), Color(1, 1, 1, alpha))
 
 
 func _draw_telegraphs(tint: Color) -> void:
@@ -713,13 +800,12 @@ func _draw_inversion(tint: Color, blink: bool) -> void:
 
 func _draw_shatter(tint: Color) -> void:
 	var k := t - _death_t0
+	var a := clampf(1.0 - k / death_time, 0.0, 1.0)
 	for i in shard_count:
 		var ang := TAU * i / shard_count + _spin
-		var at := Vector2(cos(ang), sin(ang)) * (14.0 + k * 40.0)
 		var d := Vector2(cos(ang), sin(ang))
-		var n := Vector2(-d.y, d.x)
-		var a := clampf(1.0 - k / death_time, 0.0, 1.0)
-		draw_colored_polygon(PackedVector2Array([at + d * 7.0, at + n * 2.6, at - d * 4.0, at - n * 2.6]),
-				Color(tint, a))
+		_crystal(d * (14.0 + k * 40.0), d.rotated(k * 6.0 * (1.0 if i % 2 == 0 else -1.0)),
+				tint if i % 2 == 0 else C_GLITCH, a)
 	if int(t * 20.0) % 2 == 0:
 		draw_circle(Vector2.ZERO, 7.0, C_CORE)
+		draw_circle(Vector2.ZERO, 3.0, Color(tint, 0.8))

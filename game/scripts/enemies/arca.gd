@@ -47,6 +47,9 @@ const C_VIOLET := Color("6543a2")
 const C_RED := Color("e34f5b")
 const C_GOLD := Color("f0b84a")
 const C_PALE := Color("d7edf3")
+# Drawing-only shades (flat regions; the Actors shader adds outline and edges).
+const C_SHADOW := Color("060b19")
+const C_PALE_SHADE := Color("98b4c4")
 
 var state := S.INTRO
 var _timer := 0.0
@@ -473,13 +476,13 @@ func _boss_draw(white: bool) -> void:
 		var a := -t * 0.6 + i * TAU / 8.0
 		draw_line(Vector2.from_angle(a) * 29.0, Vector2.from_angle(a) * 32.0,
 				w.call(Color(C_CYAN, 0.5 * appear)), 1.0)
-	# Phase 2: exposed core spikes.
+	# Phase 2: exposed core spikes (two-tone blades).
 	if phase2:
 		for i in 6:
 			var a := t * 1.8 + i * TAU / 6.0
 			var tip := Vector2.from_angle(a) * (25.0 + sin(t * 9.0 + i) * 2.0)
-			draw_colored_polygon(PackedVector2Array([Vector2.from_angle(a - 0.22) * 15.0, tip,
-					Vector2.from_angle(a + 0.22) * 15.0]), w.call(C_RED if i % 2 == 0 else C_VIOLET))
+			_spike(Vector2.from_angle(a - 0.22) * 15.0, tip, Vector2.from_angle(a + 0.22) * 15.0,
+					C_RED if i % 2 == 0 else C_VIOLET, w)
 	# Shield panels.
 	var r := lerpf(PANEL_R, PANEL_OPEN_R, _open_k)
 	var half := asin(PANEL_LEN * 0.5 / PANEL_R)
@@ -487,33 +490,17 @@ func _boss_draw(white: bool) -> void:
 	for i in _panels.size():
 		var a := _panel_angle(i)
 		if state == S.BREAK and int(t * 16.0) % 2 == 0:
-			draw_arc(Vector2.ZERO, r, a - half, a + half, 8, w.call(C_RED), PANEL_THICK)
+			_panel(a, r, half, C_RED, C_GOLD, w)
 		elif _open_k > 0.5 or not active:
 			var alpha := 0.35 * appear
 			draw_arc(Vector2.ZERO, r - PANEL_THICK * 0.5, a - half, a + half, 8, w.call(Color(C_CYAN, alpha)), 1.0)
 			draw_arc(Vector2.ZERO, r + PANEL_THICK * 0.5, a - half, a + half, 8, w.call(Color(C_CYAN, alpha)), 1.0)
 		else:
-			draw_arc(Vector2.ZERO, r, a - half, a + half, 8, w.call(C_PALE if warn else C_PANEL), PANEL_THICK)
-			draw_arc(Vector2.ZERO, r + PANEL_THICK * 0.5 - 0.5, a - half, a + half, 8, w.call(C_CYAN), 1.5)
-			draw_line(Vector2.from_angle(a) * (r - 2.0), Vector2.from_angle(a) * (r + 2.0), w.call(C_GOLD), 2.0)
+			_panel(a, r, half, C_PALE if warn else C_PANEL, C_GOLD, w)
 	# Core shell and eye.
 	if dying and int(t * 20.0) % 2 == 0:
 		return
-	draw_circle(Vector2.ZERO, 16.0, w.call(C_DEEP))
-	draw_arc(Vector2.ZERO, 14.5, 0.0, TAU, 28, w.call(C_GOLD if phase2 else C_VIOLET), 3.0)
-	var attacking := state in [S.LASER_AIM, S.LASER_LOCK, S.LASER_FIRE, S.SPIRAL]
-	var iris_c := C_RED if attacking else (C_GOLD if phase2 else C_CYAN)
-	if state == S.LASER_LOCK and int(t * 30.0) % 2 == 0:
-		iris_c = C_PALE
-	var look := _look * 3.5
-	draw_circle(look * 0.3, 10.0, w.call(C_PALE))
-	draw_circle(look, 6.0, w.call(iris_c))
-	for i in 6:
-		var a := t * (4.0 if attacking else 1.0) + i * TAU / 6.0
-		draw_line(look + Vector2.from_angle(a) * 2.5, look + Vector2.from_angle(a + 0.7) * 5.5,
-				w.call(Color(C_DEEP, 0.55)), 1.0)
-	draw_circle(look, 2.5, w.call(C_DEEP))
-	draw_circle(look + Vector2(-1.5, -1.5), 1.0, w.call(Color.WHITE))
+	_draw_core(w)
 	# Intro: scan lines sweep over the forming core.
 	if not active and not dying:
 		for i in 3:
@@ -525,6 +512,80 @@ func _boss_draw(white: bool) -> void:
 		for i in 4:
 			var a := t * 6.0 + i * TAU / 4.0
 			draw_line(Vector2.from_angle(a) * 34.0, Vector2.from_angle(a + 0.5) * 20.0, w.call(C_GOLD), 1.5)
+
+
+## The network core: a bezel ring (lit on top, shaded below) with four studs, a
+## lit hood and a shadowed jaw inside the housing, then the eye: shaded sclera,
+## rimmed iris with turning aperture blades, pupil and two catchlights.
+func _draw_core(w: Callable) -> void:
+	var ring_c := C_GOLD if phase2 else C_VIOLET
+	draw_circle(Vector2.ZERO, 16.0, w.call(C_DEEP))
+	_poly(_ring_seg(13.0, 16.0, PI, TAU), w.call(ring_c.lightened(0.25)))
+	_poly(_ring_seg(13.0, 16.0, 0.0, PI), w.call(ring_c.darkened(0.3)))
+	for k in 4:
+		var p := (Vector2.from_angle(PI / 4.0 + k * PI / 2.0) * 14.5).floor()
+		draw_rect(Rect2(p - Vector2(1, 1), Vector2(2, 2)), w.call(C_RED if phase2 else C_PALE))
+	_poly(_ring_seg(10.5, 13.0, PI + 0.35, TAU - 0.35), w.call(C_PANEL))
+	_poly(_ring_seg(10.5, 13.0, 0.35, PI - 0.35), w.call(C_SHADOW))
+	var attacking := state in [S.LASER_AIM, S.LASER_LOCK, S.LASER_FIRE, S.SPIRAL]
+	var iris_c := C_RED if attacking else (C_GOLD if phase2 else C_CYAN)
+	if state == S.LASER_LOCK and int(t * 30.0) % 2 == 0:
+		iris_c = C_PALE
+	var look := _look * 3.5
+	var sc := look * 0.3
+	# Sclera with a shaded lower segment.
+	draw_circle(sc, 10.0, w.call(C_PALE))
+	var shade := PackedVector2Array()
+	for k in 9:
+		shade.append(sc + Vector2.from_angle(lerpf(0.45, PI - 0.45, k / 8.0)) * 10.0)
+	draw_colored_polygon(shade, w.call(C_PALE_SHADE))
+	# Iris with turning aperture blades, pupil.
+	draw_circle(look, 6.0, w.call(iris_c))
+	for i in 6:
+		var a := t * (4.0 if attacking else 1.0) + i * TAU / 6.0
+		draw_line(look + Vector2.from_angle(a) * 2.5, look + Vector2.from_angle(a + 0.7) * 5.5,
+				w.call(Color(C_DEEP, 0.55)), 1.0)
+	draw_circle(look, 2.5, w.call(C_DEEP))
+	draw_rect(Rect2((look + Vector2(-3, -3)).floor(), Vector2(2, 2)), w.call(Color.WHITE))
+	draw_rect(Rect2((look + Vector2(2, 1)).floor(), Vector2(1, 1)), w.call(Color.WHITE))
+
+
+## One shield panel: a navy plate split into three tiles by dark seams, a cyan
+## rim on the outside edge and a gold emitter node with a glint in the middle.
+func _panel(a: float, r: float, half: float, fill: Color, node: Color, w: Callable) -> void:
+	var h := PANEL_THICK * 0.5
+	_poly(_ring_seg(r - h, r + h - 1.5, a - half, a + half), w.call(fill))
+	_poly(_ring_seg(r + h - 1.5, r + h, a - half, a + half), w.call(C_CYAN))
+	for k in [-1.0, 1.0]:
+		var s: float = a + k * half * 0.38
+		draw_line(Vector2.from_angle(s) * (r - h), Vector2.from_angle(s) * (r + h - 1.5), w.call(C_DEEP), 1.0)
+	_poly(_ring_seg(r - h + 1.0, r + h - 1.5, a - 0.07, a + 0.07, 2), w.call(node))
+	var g := (Vector2.from_angle(a) * (r + 1.0)).floor()
+	draw_rect(Rect2(g, Vector2(1, 1)), w.call(C_PALE))
+
+
+## Two-tone blade from base_l to base_r with its tip; the half facing up is lit.
+func _spike(base_l: Vector2, tip: Vector2, base_r: Vector2, c: Color, w: Callable) -> void:
+	var mid := (base_l + base_r) * 0.5
+	var left_up := (base_l + tip + mid).y < (base_r + tip + mid).y
+	var lit := c.lightened(0.3)
+	var dark := c.darkened(0.3)
+	_poly([base_l, tip, mid], w.call(lit if left_up else dark))
+	_poly([mid, tip, base_r], w.call(dark if left_up else lit))
+
+
+## Annulus segment between radii r0 and r1, angles a0..a1, as a polygon.
+func _ring_seg(r0: float, r1: float, a0: float, a1: float, n := 8) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in n + 1:
+		pts.append(Vector2.from_angle(lerpf(a0, a1, k / float(n))) * r1)
+	for k in n + 1:
+		pts.append(Vector2.from_angle(lerpf(a1, a0, k / float(n))) * r0)
+	return pts
+
+
+func _poly(pts, c: Color) -> void:
+	draw_colored_polygon(PackedVector2Array(pts), c)
 
 
 # --- boss-owned objects -----------------------------------------------------------------
@@ -658,11 +719,15 @@ class Drone extends "res://scripts/combat/enemy_shot.gd":
 
 	func _draw() -> void:
 		var blink := not _launched and _age > hold - 0.35 and int(_age * 20.0) % 2 == 0
-		var body := Color("d7edf3") if blink else Color("1c375b")
-		draw_colored_polygon(PackedVector2Array([Vector2(0, -6), Vector2(6, 0), Vector2(0, 6), Vector2(-6, 0)]), body)
+		# Lit upper half, shaded lower half, cyan rim, red sensor eye with a glint.
+		var top := Color("d7edf3") if blink else Color("2f5a86")
+		var bottom := Color("98b4c4") if blink else Color("13284a")
+		draw_colored_polygon(PackedVector2Array([Vector2(0, -6), Vector2(6, 0), Vector2(-6, 0)]), top)
+		draw_colored_polygon(PackedVector2Array([Vector2(-6, 0), Vector2(6, 0), Vector2(0, 6)]), bottom)
 		draw_polyline(PackedVector2Array([Vector2(0, -6), Vector2(6, 0), Vector2(0, 6), Vector2(-6, 0),
 				Vector2(0, -6)]), Color("00b8be"), 1.0)
 		draw_circle(Vector2.ZERO, 2.0, Color("e34f5b"))
+		draw_rect(Rect2(-1, -1, 1, 1), Color("ffd6d6"))
 
 
 ## Shield panel torn off at the phase change: flies outward, spinning.
@@ -678,8 +743,11 @@ class PanelShard extends "res://scripts/combat/enemy_shot.gd":
 		super._physics_process(delta)
 
 	func _draw() -> void:
+		# A torn-off panel tile: navy plate, cyan rim, dark seams, gold node.
 		draw_set_transform(Vector2.ZERO, spin, Vector2.ONE)
 		draw_rect(Rect2(-6, -3, 12, 6), Color("1c375b"))
-		draw_rect(Rect2(-6, -3, 12, 6), Color("00b8be"), false, 1.0)
-		draw_rect(Rect2(-1, -2, 2, 4), Color("f0b84a"))
+		draw_rect(Rect2(-6, -3, 12, 2), Color("00b8be"))
+		draw_rect(Rect2(-3, -1, 1, 4), Color("101b36"))
+		draw_rect(Rect2(2, -1, 1, 4), Color("101b36"))
+		draw_rect(Rect2(-1, -1, 2, 3), Color("f0b84a"))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
