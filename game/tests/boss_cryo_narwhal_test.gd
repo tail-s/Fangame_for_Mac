@@ -64,7 +64,7 @@ func test_stage_file() -> void:
 			"water, ice and spike tiles are used")
 	var enemies := 0
 	var hp_up := 0
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get_script() == Walker or c.get_script() == Turret:
 			enemies += 1
 		if c.get("kind") == "hp":
@@ -88,7 +88,7 @@ func test_stage_file() -> void:
 ## Key jumps of the required path, with a neutral IX and real tile physics (no armor).
 func test_traversal() -> void:
 	var lv = _load_level()
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get_script() == Walker or c.get_script() == Turret:
 			c.queue_free()
 	var p = null
@@ -144,7 +144,7 @@ func test_traversal() -> void:
 	await _dash_jump(p, -1, 122.3 * T)
 	await _walk(p, -1, 114.5 * T)
 	var hp_left := 0
-	for c in lv.get_children():
+	for c in lv.entities():
 		# Only the tank's HP-up (the hangar ledge one is tested in stage_link_test.gd).
 		if c.get("kind") == "hp" and c.position.x > 100 * T and not c.is_queued_for_deletion():
 			hp_left += 1
@@ -208,7 +208,7 @@ func test_fight() -> void:
 				p2_patterns[b.pattern] = true
 		if not arena.grow(1.0).has_point(b.position):
 			inside = false
-		for n in lv.get_children():
+		for n in lv.entities():
 			if n.get_script() == Narwhal.Icicle:
 				seen.icicle = true
 			elif n.get_script() == Narwhal.Shard:
@@ -261,7 +261,7 @@ func test_each_pattern() -> void:
 			if b.state == Narwhal.S.CHARGE:
 				min_x = minf(min_x, b.position.x)
 				max_x = maxf(max_x, b.position.x)
-			for n in lv.get_children():
+			for n in lv.entities():
 				if (name == "rain" and n.get_script() == Narwhal.Icicle) \
 						or (name == "breath" and n.get_script() == Narwhal.Shard) \
 						or (name == "wave" and n.get_script() == Narwhal.IcePillar):
@@ -348,12 +348,12 @@ func test_weakness() -> void:
 	b._slam()
 	await _frames(2)
 	var pillars := 0
-	for n in lv.get_children():
+	for n in lv.entities():
 		if n.get_script() == Narwhal.IcePillar and not n.is_queued_for_deletion():
 			pillars += 1
 	b.take_damage(1, "heat_mirage")
 	var left := 0
-	for n in lv.get_children():
+	for n in lv.entities():
 		if n.get_script() == Narwhal.IcePillar and not n.is_queued_for_deletion():
 			left += 1
 	_check(pillars > 5 and left == 0 and b.state == Narwhal.S.STAGGER,
@@ -378,7 +378,7 @@ func test_defeat() -> void:
 		await physics_frame
 	_check(done[0] and not is_instance_valid(b), "death sequence emits defeated and frees the boss")
 	var leftovers := 0
-	for n in lv.get_children():
+	for n in lv.entities():
 		if n.is_in_group("enemy_shot") or n.is_in_group("damaging"):
 			leftovers += 1
 	_check(leftovers == 0, "no boss projectiles left behind")

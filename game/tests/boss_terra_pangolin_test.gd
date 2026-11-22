@@ -51,7 +51,7 @@ func test_stage() -> void:
 	_check(lv.arenas.hidden.door != null and lv.arenas.hidden.door_rect.size == Vector2(16, 64), "hidden door is 4 tiles tall")
 	_check(lv.breakables.size() > 0, "cracked walls (%d)" % lv.breakables.size())
 	var kinds := {}
-	for c in lv.get_children():
+	for c in lv.entities():
 		var s = c.get_script()
 		if s != null:
 			var key: String = s.resource_path.get_file()

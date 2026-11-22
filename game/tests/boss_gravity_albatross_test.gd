@@ -54,7 +54,7 @@ func test_stage_layout() -> void:
 	var parts := []
 	var hp_tanks := 0
 	var movers := {"m": 0, "n": 0}
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get("part_id") != null and c.get("kind") == "part":
 			parts.append(c.part_id)
 		elif c.get("kind") == "hp":
@@ -364,7 +364,7 @@ func _level(after := false):
 		lv.condition = func(_r): return true
 	root.add_child(lv)
 	lv.load_from_file(STAGE)
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.is_in_group("enemy"):
 			c.queue_free()
 	return lv
@@ -427,7 +427,7 @@ func _jump_to(p, landed: Callable) -> bool:
 
 
 func _mover(lv, cx: int, cy: int):
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c is AnimatableBody2D and c.rect.position == Vector2(cx * T, cy * T):
 			return c
 	return null

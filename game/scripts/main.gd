@@ -650,7 +650,7 @@ func _on_boss_trigger(kind: String) -> void:
 	boss.arena = arena.rect
 	boss.position = arena.spawn
 	boss.player = player
-	level.add_child(boss)
+	level.add_actor(boss)
 	boss.hp_changed.connect(hud.set_boss_hp)
 	boss.defeated.connect(_on_boss_defeated)
 	hud.set_boss_hp(boss.hp, boss.get_max_hp())

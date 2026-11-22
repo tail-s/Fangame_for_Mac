@@ -306,7 +306,7 @@ func test_prism_stage() -> void:
 	_check(reflected, "mirror bends a laser beam")
 	_check(lv.breakables.size() == 1, "one cracked wall")
 	var capsule := false
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get("part_id") == "vanguard_head":
 			capsule = true
 	_check(capsule, "Vanguard HEAD capsule is in the Prism Gecko stage")
@@ -636,7 +636,7 @@ func test_gimmicks() -> void:
 	_check(p.position.y > 152.0, "crumbling floor drops the player onto the floor below (y=%.0f)" % p.position.y)
 	# Moving platform moves.
 	var mover = null
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c is AnimatableBody2D:
 			mover = c
 	var x0: float = mover.position.x

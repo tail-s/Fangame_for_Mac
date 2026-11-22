@@ -16,6 +16,7 @@ const Layers = preload("res://scripts/core/layers.gd")
 const ArmorData = preload("res://scripts/armor/armor_data.gd")
 const Walker = preload("res://scripts/enemies/walker.gd")
 const Turret = preload("res://scripts/enemies/turret.gd")
+const PIXEL_SHADE = preload("res://scripts/fx/pixel_shade.gdshader")
 const Checkpoint = preload("res://scripts/level/checkpoint.gd")
 const Goal = preload("res://scripts/level/goal.gd")
 const Breakable = preload("res://scripts/level/breakable.gd")
@@ -72,6 +73,7 @@ var chunks: Array = []
 var _ci: CanvasItem
 ## `func(req: String) -> bool` used for `; @alt` / `; @change` lines (GDD §5-4
 ## cross-stage changes). Unset = every requirement unmet (original layout).
+var actors: CanvasGroup
 var condition := Callable()
 ## `; @change` texts whose requirement is met for this load.
 var active_changes: Array = []
@@ -300,6 +302,7 @@ func _build() -> void:
 	for kind in ARENA_MARKERS:
 		_build_arena_door(kind)
 
+	_make_actors()  # above the tiles, below the player
 	var laser_index := 0
 	for y in height:
 		for x in width:
@@ -316,9 +319,9 @@ func _build() -> void:
 				"P":
 					spawn = feet
 				"w":
-					_place(Walker.new(), feet)
+					add_actor(Walker.new(), feet)
 				"t":
-					_place(Turret.new(), feet)
+					add_actor(Turret.new(), feet)
 				"C":
 					var cp := Checkpoint.new()
 					_place(cp, feet)
@@ -496,6 +499,35 @@ func _cell_center(c: Vector2i) -> Vector2:
 func _place(node: Node2D, pos: Vector2) -> void:
 	node.position = pos
 	add_child(node)
+
+
+## Enemies, bosses and everything they spawn live in `actors`, a CanvasGroup
+## whose shader gives the vector drawing a pixel-art outline and edge shading.
+func add_actor(node: Node2D, pos := Vector2.INF) -> void:
+	if pos != Vector2.INF:
+		node.position = pos
+	_make_actors()
+	actors.add_child(node)
+
+
+## Level children plus everything inside the actor layer (enemies, bosses).
+func entities() -> Array:
+	var out: Array = get_children()
+	if actors != null:
+		out.append_array(actors.get_children())
+	return out
+
+
+func _make_actors() -> void:
+	if actors != null:
+		return
+	actors = CanvasGroup.new()
+	actors.name = "Actors"
+	var mat := ShaderMaterial.new()
+	mat.shader = PIXEL_SHADE
+	actors.material = mat
+	actors.fit_margin = 4.0
+	add_child(actors)
 
 
 func _rect_shape(rect: Rect2) -> CollisionShape2D:

@@ -100,7 +100,7 @@ func test_stage_file() -> void:
 	var hp_ups := 0
 	var walkers := 0
 	var turrets := 0
-	for c in lv.get_children():
+	for c in lv.entities():
 		var path: String = c.get_script().resource_path if c.get_script() != null else ""
 		kinds[path.get_file()] = true
 		if c.get("kind") == "hp":
@@ -111,7 +111,7 @@ func test_stage_file() -> void:
 			turrets += 1
 	_check(kinds.has("electric_floor.gd"), "rhythm electric floors are built")
 	var phases := {}
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get_script() != null and c.get_script().resource_path.ends_with("blink_platform.gd"):
 			phases[c.phase_b] = true
 	_check(phases.size() == 2, "both hologram phases (o / O) are present")
@@ -138,7 +138,7 @@ func test_route() -> void:
 	var triggered := [false]
 	lv.boss_triggered.connect(func(_k) -> void: triggered[0] = true)
 	var holo := {}
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get_script() != null and c.get_script().resource_path.ends_with("blink_platform.gd"):
 			holo[c.phase_b] = c
 	var p = _player(lv, lv.spawn)

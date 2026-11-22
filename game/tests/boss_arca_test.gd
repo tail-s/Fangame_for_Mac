@@ -50,7 +50,7 @@ func test_stage() -> void:
 			reflected = true
 	_check(lv.lasers.size() >= 3 and reflected, "laser grid with a mirror-bent beam (%d emitters)" % lv.lasers.size())
 	var kinds := {}
-	for c in lv.get_children():
+	for c in lv.entities():
 		var path: String = c.get_script().resource_path if c.get_script() != null else ""
 		kinds[path.get_file()] = true
 	for gimmick in ["blink_platform.gd", "mover.gd", "crumble_block.gd", "electric_floor.gd",
@@ -88,7 +88,7 @@ func test_route() -> void:
 	# phase switches on mid-air).
 	await _place(p, 46, 288)
 	var blink := {}
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.has_method("_time_left_on"):
 			blink[c.phase_b] = c
 	var cur = null
@@ -132,7 +132,7 @@ func test_route() -> void:
 	# Mover, then two crumbling blocks, then the boss approach.
 	await _place(p, 141, 288)
 	var mover = null
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c is AnimatableBody2D and c.axis == Vector2.RIGHT:
 			mover = c
 	var base_x: float = mover._base.x

@@ -428,7 +428,7 @@ func _load(id: String, after: bool):
 		lv.condition = func(_r): return true
 	root.add_child(lv)
 	lv.load_from_file("res://levels/%s.txt" % id)
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.is_in_group("enemy"):
 			c.queue_free()
 	return lv
@@ -455,7 +455,7 @@ func _fmt(d: Dictionary) -> Array:
 ## Pickup ids (HP-ups and armor capsules) the level spawned, sorted.
 func _rewards(lv) -> Array:
 	var out := []
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get("pickup_id") != null and not c.is_queued_for_deletion():
 			out.append(c.pickup_id)
 	out.sort()
@@ -463,7 +463,7 @@ func _rewards(lv) -> Array:
 
 
 func _movers(lv) -> int:
-	return lv.get_children().filter(func(c): return c is AnimatableBody2D).size()
+	return lv.entities().filter(func(c): return c is AnimatableBody2D).size()
 
 
 func _vents(lv) -> Array:
@@ -601,7 +601,7 @@ func _charge_shot(p) -> void:
 
 
 func _mover(lv, cx: int, cy: int):
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c is AnimatableBody2D and c.rect.position == Vector2(cx * T, cy * T):
 			return c
 	return null

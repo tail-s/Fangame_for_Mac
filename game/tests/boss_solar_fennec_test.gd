@@ -77,7 +77,7 @@ func test_stage() -> void:
 	var walkers := 0
 	var turrets := 0
 	var hp_ups := 0
-	for c in lv.get_children():
+	for c in lv.entities():
 		if c.get_script() == Crumble:
 			crumbles += 1
 		elif c.get_script() == Mover:
