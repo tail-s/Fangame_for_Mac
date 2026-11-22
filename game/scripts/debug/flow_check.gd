@@ -251,6 +251,7 @@ func _perf_all() -> void:
 		var worst := 0.0
 		var total := 0.0
 		var nodes := 0
+		var calls := 0
 		for i in 600:
 			Input.action_press("move_right")
 			if i % 40 == 0:
@@ -269,9 +270,12 @@ func _perf_all() -> void:
 			worst = maxf(worst, ms)
 			total += ms
 			nodes = maxi(nodes, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
+			calls = maxi(calls, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
 		for a in ["move_right", "jump", "shoot"]:
 			Input.action_release(a)
-		print("  %-20s avg %5.2f ms  worst %5.2f ms  nodes %d" % [s.id, total / 600.0, worst, nodes])
+		# Draw calls are 0 under --headless (nothing is rendered).
+		print("  %-20s avg %5.2f ms  worst %5.2f ms  nodes %d  draw calls %d" % [s.id, total / 600.0,
+				worst, nodes, calls])
 		worst_all = maxf(worst_all, worst)
 		_check(total / 600.0 < 8.0, "%s: average frame cost under 8 ms" % s.id)
 	main.show_title()

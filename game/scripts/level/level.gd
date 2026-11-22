@@ -25,6 +25,9 @@ const Pickup = preload("res://scripts/level/pickup.gd")
 const Crumble = preload("res://scripts/level/crumble_block.gd")
 const Mover = preload("res://scripts/level/mover.gd")
 const ElectricFloor = preload("res://scripts/level/electric_floor.gd")
+const LevelChunk = preload("res://scripts/level/level_chunk.gd")
+## Tiles are drawn in CHUNK x CHUNK blocks so off-screen blocks are culled.
+const CHUNK := 16
 
 const C_FILL := Color("1c375b")
 const C_PANEL := Color("142a47")
@@ -64,6 +67,9 @@ var lasers: Array = []
 ##          "door": StaticBody2D, "door_rect": Rect2, "closed": bool}
 var arenas := {}
 var reveal := false
+var chunks: Array = []
+## Canvas item the tile helpers draw on (the chunk being drawn).
+var _ci: CanvasItem
 ## `func(req: String) -> bool` used for `; @alt` / `; @change` lines (GDD §5-4
 ## cross-stage changes). Unset = every requirement unmet (original layout).
 var condition := Callable()
@@ -192,7 +198,8 @@ func set_reveal(value: bool) -> void:
 	for b in breakables:
 		if is_instance_valid(b):
 			b.reveal = value
-	queue_redraw()
+	for c in chunks:
+		c.queue_redraw()
 
 
 func has_boss() -> bool:
@@ -226,6 +233,13 @@ func open_door(kind := "main") -> void:
 # --- build ----------------------------------------------------------------------
 
 func _build() -> void:
+	for cy in range(0, height, CHUNK):
+		for cx in range(0, width, CHUNK):
+			var chunk := LevelChunk.new()
+			chunk.level = self
+			chunk.cells = Rect2i(cx, cy, mini(CHUNK, width - cx), mini(CHUNK, height - cy))
+			add_child(chunk)
+			chunks.append(chunk)
 	solid_rects = []
 	for ch in SOLID_CHARS:
 		solid_rects.append_array(_merge_rects(ch))
@@ -495,13 +509,15 @@ func _rect_shape(rect: Rect2) -> CollisionShape2D:
 
 # --- drawing ----------------------------------------------------------------------
 
-func _draw() -> void:
-	for y in height:
-		for x in width:
+## Draws the tiles of `r` onto `ci` (called from LevelChunk._draw).
+func draw_cells(ci: CanvasItem, r: Rect2i) -> void:
+	_ci = ci
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, r.end.x):
 			var c := cell(x, y)
 			var pos := Vector2(x * TILE, y * TILE)
 			if c != "~" and not is_solid(x, y) and _in_water(x, y):
-				draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
+				_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
 			match c:
 				"#", "e":
 					_draw_solid(x, y, pos)
@@ -519,13 +535,17 @@ func _draw() -> void:
 					_draw_water(x, y, pos)
 				"z":
 					if (x + y) % 3 == 0:
-						draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), Color("b78af3", 0.35))
+						_ci.draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), Color("b78af3", 0.35))
 				"|":
-					draw_rect(Rect2(pos + Vector2(3, 0), Vector2(10, TILE)), Color("71dedf", 0.22))
-					draw_rect(Rect2(pos + Vector2(4, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
-					draw_rect(Rect2(pos + Vector2(11, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
-					draw_colored_polygon(PackedVector2Array([pos + Vector2(5, 10 - (y % 2) * 5),
+					_ci.draw_rect(Rect2(pos + Vector2(3, 0), Vector2(10, TILE)), Color("71dedf", 0.22))
+					_ci.draw_rect(Rect2(pos + Vector2(4, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
+					_ci.draw_rect(Rect2(pos + Vector2(11, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
+					_ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(5, 10 - (y % 2) * 5),
 							pos + Vector2(8, 6 - (y % 2) * 5), pos + Vector2(11, 10 - (y % 2) * 5)]), Color("d7edf3", 0.7))
+
+
+## Arena doors (the tiles themselves are drawn by the chunks).
+func _draw() -> void:
 	for kind in arenas:
 		var a: Dictionary = arenas[kind]
 		if a.get("door") == null:
@@ -542,16 +562,16 @@ func _draw() -> void:
 
 
 func _draw_solid(x: int, y: int, pos: Vector2) -> void:
-	draw_rect(Rect2(pos, Vector2(TILE, TILE)), C_FILL)
-	draw_rect(Rect2(pos + Vector2(1.5, 1.5), Vector2(TILE - 3, TILE - 3)), C_PANEL, false, 1.0)
+	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), C_FILL)
+	_ci.draw_rect(Rect2(pos + Vector2(1.5, 1.5), Vector2(TILE - 3, TILE - 3)), C_PANEL, false, 1.0)
 	if (x * 7 + y * 13) % 5 == 0:
-		draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), C_EDGE.darkened(0.55))
+		_ci.draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), C_EDGE.darkened(0.55))
 	if not _looks_solid(x, y - 1):
-		draw_rect(Rect2(pos, Vector2(TILE, 2)), C_EDGE if cell(x, y) != "e" else Color("efcf5f"))
+		_ci.draw_rect(Rect2(pos, Vector2(TILE, 2)), C_EDGE if cell(x, y) != "e" else Color("efcf5f"))
 	if not _looks_solid(x - 1, y):
-		draw_rect(Rect2(pos, Vector2(1, TILE)), C_EDGE.darkened(0.4))
+		_ci.draw_rect(Rect2(pos, Vector2(1, TILE)), C_EDGE.darkened(0.4))
 	if not _looks_solid(x + 1, y):
-		draw_rect(Rect2(pos + Vector2(TILE - 1, 0), Vector2(1, TILE)), C_EDGE.darkened(0.4))
+		_ci.draw_rect(Rect2(pos + Vector2(TILE - 1, 0), Vector2(1, TILE)), C_EDGE.darkened(0.4))
 
 
 ## A non-water cell that sits inside a body of water (water above, or on both sides).
@@ -560,24 +580,24 @@ func _in_water(x: int, y: int) -> bool:
 
 
 func _draw_ice(x: int, y: int, pos: Vector2) -> void:
-	draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("5f8fb8"))
-	draw_line(pos + Vector2(3, 12), pos + Vector2(9, 4), Color("d7edf3", 0.5), 1.0)
+	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("5f8fb8"))
+	_ci.draw_line(pos + Vector2(3, 12), pos + Vector2(9, 4), Color("d7edf3", 0.5), 1.0)
 	if not _looks_solid(x, y - 1):
-		draw_rect(Rect2(pos, Vector2(TILE, 2)), Color("d7edf3"))
+		_ci.draw_rect(Rect2(pos, Vector2(TILE, 2)), Color("d7edf3"))
 
 
 func _draw_water(x: int, y: int, pos: Vector2) -> void:
-	draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
+	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
 	if cell(x, y - 1) != "~":
-		draw_rect(Rect2(pos, Vector2(TILE, 1)), Color(0.7, 0.9, 1.0, 0.7))
+		_ci.draw_rect(Rect2(pos, Vector2(TILE, 1)), Color(0.7, 0.9, 1.0, 0.7))
 
 
 ## Fake tiles look like solid ground unless Vanguard HEAD reveals them.
 func _draw_fake(x: int, y: int, pos: Vector2) -> void:
 	if reveal:
-		draw_rect(Rect2(pos + Vector2(1, 1), Vector2(TILE - 2, TILE - 2)), Color("f0b84a", 0.7), false, 1.0)
-		draw_line(pos + Vector2(4, 4), pos + Vector2(12, 12), Color("f0b84a", 0.5), 1.0)
-		draw_line(pos + Vector2(12, 4), pos + Vector2(4, 12), Color("f0b84a", 0.5), 1.0)
+		_ci.draw_rect(Rect2(pos + Vector2(1, 1), Vector2(TILE - 2, TILE - 2)), Color("f0b84a", 0.7), false, 1.0)
+		_ci.draw_line(pos + Vector2(4, 4), pos + Vector2(12, 12), Color("f0b84a", 0.5), 1.0)
+		_ci.draw_line(pos + Vector2(12, 4), pos + Vector2(4, 12), Color("f0b84a", 0.5), 1.0)
 	else:
 		_draw_solid(x, y, pos)
 
@@ -589,26 +609,26 @@ func _looks_solid(x: int, y: int) -> bool:
 
 ## Sealed gate: solid until a cross-stage change opens it (see `; @alt`).
 func _draw_gate(x: int, y: int, pos: Vector2) -> void:
-	draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("2a2f45"))
+	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("2a2f45"))
 	for i in 3:
 		var bx := pos.x + 1 + i * 5 + (y % 2) * 2
-		draw_line(Vector2(bx, pos.y + TILE), Vector2(minf(bx + 4, pos.x + TILE), pos.y), Color("efcf5f", 0.55), 2.0)
-	draw_rect(Rect2(pos + Vector2(0.5, 0.5), Vector2(TILE - 1, TILE - 1)), Color("efcf5f", 0.8), false, 1.0)
+		_ci.draw_line(Vector2(bx, pos.y + TILE), Vector2(minf(bx + 4, pos.x + TILE), pos.y), Color("efcf5f", 0.55), 2.0)
+	_ci.draw_rect(Rect2(pos + Vector2(0.5, 0.5), Vector2(TILE - 1, TILE - 1)), Color("efcf5f", 0.8), false, 1.0)
 	if cell(x, y - 1) != "g":
-		draw_rect(Rect2(pos + Vector2(5, 4), Vector2(6, 5)), Color("e34f5b"))
-		draw_rect(Rect2(pos + Vector2(6, 1), Vector2(4, 4)), Color("e34f5b"), false, 1.0)
+		_ci.draw_rect(Rect2(pos + Vector2(5, 4), Vector2(6, 5)), Color("e34f5b"))
+		_ci.draw_rect(Rect2(pos + Vector2(6, 1), Vector2(4, 4)), Color("e34f5b"), false, 1.0)
 
 
 func _draw_spikes(pos: Vector2) -> void:
 	for i in 2:
 		var bx := pos.x + i * 8
-		draw_colored_polygon(PackedVector2Array([
+		_ci.draw_colored_polygon(PackedVector2Array([
 			Vector2(bx, pos.y + TILE), Vector2(bx + 4, pos.y + 6), Vector2(bx + 8, pos.y + TILE)]), C_SPIKE)
-		draw_rect(Rect2(bx + 3, pos.y + 6, 2, 2), C_SPIKE_TIP)
+		_ci.draw_rect(Rect2(bx + 3, pos.y + 6, 2, 2), C_SPIKE_TIP)
 
 
 func _draw_mirror(pos: Vector2, slash: bool) -> void:
 	var a := pos + (Vector2(2, TILE - 2) if slash else Vector2(2, 2))
 	var b := pos + (Vector2(TILE - 2, 2) if slash else Vector2(TILE - 2, TILE - 2))
-	draw_line(a, b, Color("d7edf3"), 3.0)
-	draw_line(a, b, Color("b78af3"), 1.0)
+	_ci.draw_line(a, b, Color("d7edf3"), 3.0)
+	_ci.draw_line(a, b, Color("b78af3"), 1.0)

@@ -560,6 +560,7 @@ func at_checkpoint() -> bool:
 
 func _leave_stage() -> void:
 	_generation += 1
+	get_tree().call_group("backdrop", "set_theme", "")
 	get_tree().paused = false
 	_close_menu()
 	if _story != null:
