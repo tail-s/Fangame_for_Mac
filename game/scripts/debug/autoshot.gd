@@ -10,12 +10,17 @@ const A := "aero"
 
 var out_dir := ""
 var main: Node
+## --gallery=<dir>: generic tour of every registered stage instead of the scripted one.
+var gallery := false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	_tour.call_deferred()
+	if gallery:
+		_gallery.call_deferred()
+	else:
+		_tour.call_deferred()
 
 
 func _p():
@@ -323,3 +328,45 @@ func _tour() -> void:
 	await _frames(150)
 	await _shot("37_mission_complete")
 	get_tree().quit()
+
+
+## Every stage: spawn, each checkpoint, then the boss (and hidden boss) fights.
+func _gallery() -> void:
+	Game.unlock_all()
+	Game.set_party(["ix", "sable"])
+	for s in main.stages:
+		Game.data["cleared"] = []
+		for other in main.stages:
+			if other.id != s.id:
+				Game.data["cleared"].append(other.id)
+		Game.data["cleared"].append("hidden_eclipse")
+		main.start_stage(s.id)
+		await _frames(25)
+		await _shot("%s_0_spawn" % s.id)
+		var i := 1
+		for cp in main.level.checkpoints:
+			await _teleport(cp.global_position + Vector2(-20, -2))
+			await _frames(20)
+			await _shot("%s_%d_checkpoint" % [s.id, i])
+			i += 1
+		for kind in ["main", "hidden"]:
+			if not main.level.has_arena(kind):
+				continue
+			var arena: Rect2 = main.level.arenas[kind].rect
+			await _teleport(Vector2(arena.position.x + 48.0, arena.end.y - 2.0))
+			main._on_boss_trigger(kind)
+			await _frames(110)
+			await _shot("%s_%s_boss_a" % [s.id, kind])
+			for f in 200:
+				await _frames(1)
+				if f % 30 == 0:
+					_p().in_shoot = not _p().in_shoot
+			await _shot("%s_%s_boss_b" % [s.id, kind])
+			_release()
+			if main.boss != null and is_instance_valid(main.boss):
+				main.boss.queue_free()
+			main.boss = null
+			main._in_boss = false
+			await _frames(5)
+	get_tree().quit()
+

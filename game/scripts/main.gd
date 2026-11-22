@@ -43,11 +43,12 @@ func _ready() -> void:
 	_build_backdrop()
 	Game.loadout_changed.connect(_on_loadout_changed)
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--autoshot="):
+		if arg.begins_with("--autoshot=") or arg.begins_with("--gallery="):
 			Game.save_enabled = false
 			Game.new_game()
 			var shot := Autoshot.new()
-			shot.out_dir = arg.trim_prefix("--autoshot=")
+			shot.gallery = arg.begins_with("--gallery=")
+			shot.out_dir = arg.split("=", true, 1)[1]
 			shot.main = self
 			add_child(shot)
 			return
