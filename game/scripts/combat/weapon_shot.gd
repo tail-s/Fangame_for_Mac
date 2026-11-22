@@ -20,6 +20,8 @@ const INFO := {
 	"freeze_lance": {"name": "FREEZE LANCE", "cost": 2.0, "max": 2, "color": Color("92dafa")},
 	"core_drill": {"name": "CORE DRILL", "cost": 2.0, "max": 2, "color": Color("9fc274")},
 	"pulse_ring": {"name": "PULSE RING", "cost": 4.0, "max": 1, "color": Color("efcf5f")},
+	# Not selectable: left behind by Ultimate Armor IX full-charge shots.
+	"plasma": {"name": "PLASMA", "cost": 0.0, "max": 99, "color": Color("b78af3")},
 }
 
 var kind := ""
@@ -62,6 +64,9 @@ func setup(k: String, d: int, src) -> void:
 		"pulse_ring":
 			damage = 3
 			life = 0.4
+		"plasma":
+			damage = 1
+			life = 1.0
 
 
 func _ready() -> void:
@@ -73,9 +78,9 @@ func _ready() -> void:
 		collision_mask |= Layers.WORLD
 	_shape = CollisionShape2D.new()
 	match kind:
-		"pulse_ring", "gravity_wing":
+		"pulse_ring", "gravity_wing", "plasma":
 			var circle := CircleShape2D.new()
-			circle.radius = 4.0 if kind == "pulse_ring" else 10.0
+			circle.radius = {"pulse_ring": 4.0, "gravity_wing": 10.0, "plasma": 12.0}[kind]
 			_shape.shape = circle
 		_:
 			var rect := RectangleShape2D.new()
@@ -141,7 +146,7 @@ func _pull_shots(delta: float) -> void:
 
 
 func _apply_hits() -> void:
-	var interval := 0.12 if kind in ["core_drill", "gravity_wing"] else 999.0
+	var interval := 0.12 if kind in ["core_drill", "gravity_wing", "plasma"] else 999.0
 	for b in get_overlapping_bodies():
 		if b.is_in_group("enemy"):
 			if _last_hit.has(b) and _t - _last_hit[b] < interval:
@@ -213,6 +218,11 @@ func _draw() -> void:
 			for i in 3:
 				var x := (-3.0 + i * 3.0 + (2.0 if flick else 0.0)) * dir
 				draw_line(Vector2(x, -4 + i), Vector2(x, 4 - i), Color("2a3550"), 1.0)
+		"plasma":
+			var r := 9.0 + sin(_t * 30.0) * 2.0
+			draw_circle(Vector2.ZERO, r, Color(c, 0.35))
+			draw_arc(Vector2.ZERO, r + 2.0, _t * 9.0, _t * 9.0 + 4.0, 12, Color("f0b84a"), 1.0)
+			draw_circle(Vector2.ZERO, 3.0, Color.WHITE)
 		"pulse_ring":
 			draw_arc(Vector2.ZERO, radius, 0.0, TAU, 32, c, 3.0)
 			draw_arc(Vector2.ZERO, radius * 0.8, 0.0, TAU, 32, Color(c, 0.4), 1.0)

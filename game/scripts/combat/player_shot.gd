@@ -22,6 +22,8 @@ var pierce := false
 var pierce_all := false
 var breaker := false
 var homing := false
+## Ultimate Armor full charge: stronger and leaves a lingering plasma orb.
+var plasma := false
 var small := false
 var life := 1.3
 var source = null
@@ -94,8 +96,19 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	life -= delta
 	if life <= 0.0:
+		_leave_plasma()
 		queue_free()
 	queue_redraw()
+
+
+func _leave_plasma() -> void:
+	if not plasma:
+		return
+	plasma = false
+	var orb = load("res://scripts/combat/weapon_shot.gd").new()
+	orb.setup("plasma", dir, source)
+	orb.position = position
+	get_parent().add_child.call_deferred(orb)
 
 
 func _steer(delta: float) -> void:
@@ -119,7 +132,7 @@ func _on_body_entered(body: Node) -> void:
 		if _hit.has(body):
 			return
 		_hit[body] = true
-		var killed: bool = body.take_damage(damage, kind)
+		var killed: bool = body.take_damage(damage + (1 if plasma else 0), kind)
 		if source != null and is_instance_valid(source):
 			source.register_hit()
 			if kind == "copy" and killed:
@@ -136,6 +149,7 @@ func _on_body_entered(body: Node) -> void:
 
 func _impact() -> void:
 	_done = true
+	_leave_plasma()
 	var fx := Explosion.new()
 	fx.size = 5.0
 	fx.duration = 0.15

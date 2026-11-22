@@ -63,6 +63,7 @@ func _run_all() -> void:
 	await test_weapons()
 	await test_boss_weakness()
 	await test_gimmicks()
+	await test_ultimate()
 	test_stage_registry()
 	test_save_roundtrip()
 	print("\n%d passed, %d failed" % [_pass, _fail])
@@ -644,6 +645,41 @@ func test_gimmicks() -> void:
 	_check(lv.zone_at(Vector2(72, 60)) == "water" and lv.is_ice_at(Vector2(100, 150)), "zone / ice lookups")
 	lv.queue_free()
 	await process_frame
+
+
+func test_ultimate() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.set_frame("ultimate")
+	_check(p.stats.special == "nova" and p.stats.air_dashes == 1 and not p.stats.reveal and not p.stats.breaker,
+			"Ultimate Armor IX stats: nova, air dash, no exploration abilities")
+	p.set_core(100.0)
+	var x0: float = p.position.x
+	p.in_special = true
+	await _frames(2)
+	p.in_special = false
+	await _frames(45)
+	_check(p.position.x - x0 > 200.0 and p.core < 15.0, "Nova Strike IX spends the core and travels %.0f px" % (p.position.x - x0))
+	await _frames(20)
+	p.in_shoot = true
+	await _frames(85)
+	p.in_shoot = false
+	var found := false
+	for i in 90:
+		await physics_frame
+		if not get_nodes_in_group("weapon_plasma").is_empty():
+			found = true
+			break
+	_check(found, "Ultimate full charge leaves a plasma orb")
+	await _free(w)
+	var GameScript = load("res://scripts/autoload/game.gd")
+	var g = GameScript.new()
+	g.save_enabled = false
+	g.new_game()
+	_check(not g.set_frame("ultimate"), "ultimate frame locked before Eclipse")
+	g.unlock_ultimate()
+	_check(g.set_frame("ultimate") and g.is_ultimate() and g.stats.special == "nova", "ultimate frame after unlock")
+	g.free()
 
 
 func test_stage_registry() -> void:

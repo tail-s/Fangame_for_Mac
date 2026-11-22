@@ -11,6 +11,8 @@ const MenuScreen = preload("res://scripts/ui/menu_screen.gd")
 const ArmorLab = preload("res://scripts/ui/armor_lab.gd")
 const Backdrop = preload("res://scripts/level/backdrop.gd")
 const Autoshot = preload("res://scripts/debug/autoshot.gd")
+const StoryScreen = preload("res://scripts/ui/story_screen.gd")
+const Story = preload("res://scripts/story/story_text.gd")
 
 const LEVEL_DIR := "res://levels"
 ## Sortie choices (GDD §6 tag battle). Characters are original designs.
@@ -30,6 +32,7 @@ var stages: Array = []
 var _cam: Camera2D
 var _menu: CanvasLayer
 var _lab: CanvasLayer
+var _story: CanvasLayer
 var _in_boss := false
 var _boss_kind := ""
 var _generation := 0  # bumps on every (re)load so stale timers do nothing
@@ -113,8 +116,24 @@ func requirement_met(req: String) -> bool:
 	return true
 
 
+## Shows story pages, then calls `then`.
+func play_story(pages: Array, then: Callable) -> void:
+	_leave_stage()
+	_story = StoryScreen.new()
+	_story.pages = pages
+	_story.finished.connect(func() -> void:
+		_story.queue_free()
+		_story = null
+		then.call())
+	add_child(_story)
+
+
 func show_select() -> void:
 	_leave_stage()
+	if bosses_cleared() >= 3 and not Game.has_flag("mid_event"):
+		Game.set_flag("mid_event")
+		play_story(Story.MID_EVENT, show_select)
+		return
 	var items := []
 	for s in stages:
 		var locked: bool = s.has("require") and not requirement_met(s.require)
@@ -184,7 +203,7 @@ func _on_title_choice(id: String) -> void:
 		"new":
 			Game.new_game()
 			Game.save_game()
-			show_select()
+			play_story(Story.PROLOGUE, show_select)
 		"quit":
 			get_tree().quit()
 
@@ -307,6 +326,7 @@ func load_level() -> void:
 	player.setup_party(Game.party(), Game.max_hp())
 	player.weapons = Game.weapons_available()
 	player.apply_loadout(Game.loadout())
+	player.set_frame(Game.data.get("frame", "parts") if Game.is_ultimate() else "parts")
 	player.notice.connect(func(text: String) -> void: hud.toast(text, 1.6))
 	player.kill_y = level.pixel_size().y + 48.0
 	player.reset_physics_interpolation()
@@ -316,7 +336,7 @@ func load_level() -> void:
 	hud.player = player
 	hud.set_hp(player.hp, player.max_hp)
 	hud.set_core(player.core, Player.CORE_MAX)
-	hud.set_loadout(Game.loadout())
+	hud.set_loadout(ArmorData.ULTIMATE_LOADOUT if Game.is_ultimate() else Game.loadout())
 
 	_cam = Camera2D.new()
 	_cam.position = Vector2(0, -16)
@@ -345,6 +365,9 @@ func _leave_stage() -> void:
 	_generation += 1
 	get_tree().paused = false
 	_close_menu()
+	if _story != null:
+		_story.queue_free()
+		_story = null
 	if _lab != null:
 		_lab.queue_free()
 		_lab = null
@@ -370,7 +393,8 @@ func _set_camera_limits(r: Rect2) -> void:
 func _on_loadout_changed() -> void:
 	if player != null and is_instance_valid(player):
 		player.apply_loadout(Game.loadout())
-		hud.set_loadout(Game.loadout())
+		player.set_frame("ultimate" if Game.is_ultimate() else "parts")
+		hud.set_loadout(ArmorData.ULTIMATE_LOADOUT if Game.is_ultimate() else Game.loadout())
 	if level != null:
 		level.set_reveal(Game.stats.reveal)
 
@@ -451,9 +475,26 @@ func _on_hidden_defeated() -> void:
 	_reward_hidden(hid)
 
 
-## Rewards for hidden bosses (extended by the Ultimate Armor / endings step).
+## Hidden boss rewards (GDD v0.2 §5-3): Eclipse -> Ultimate Armor IX,
+## Fragment Λ -> true-ending route.
 func _reward_hidden(hid: String) -> void:
-	hud.toast("히든 보스 격파: %s" % hid.to_upper(), 3.0)
+	match hid:
+		"eclipse":
+			Game.unlock_ultimate()
+			hud.toast("ULTIMATE ARMOR IX 획득!\n아머 랩의 FRAME 에서 전환 · 확장 엔딩 조건 달성", 4.0)
+		"fragment":
+			hud.toast("프래그먼트 Λ 데이터 회수 — 진엔딩 조건 달성", 4.0)
+		_:
+			hud.toast("히든 보스 격파", 3.0)
+
+
+## Ending by hidden bosses beaten (GDD v0.2 §3-4): normal / extended / true.
+func ending_kind() -> String:
+	if Game.is_cleared("hidden_fragment"):
+		return "true"
+	if Game.is_cleared("hidden_eclipse"):
+		return "extended"
+	return "normal"
 
 
 func _on_goal() -> void:
@@ -466,7 +507,15 @@ func _finish_stage(text: String) -> void:
 	hud.show_message(text)
 	Game.mark_cleared(stage.id)
 	await get_tree().create_timer(CLEAR_DELAY).timeout
-	if gen == _generation:
+	if gen != _generation:
+		return
+	if stage.get("final", "") == "true":
+		var kind := ending_kind()
+		Game.set_flag("ending_" + kind)
+		var pages: Array = {"normal": Story.ENDING_NORMAL, "extended": Story.ENDING_EXTENDED,
+				"true": Story.ENDING_TRUE}[kind]
+		play_story(pages + Story.CREDITS, show_select)
+	else:
 		show_select()
 
 

@@ -94,6 +94,8 @@ var kill_y := INF
 ## The stage (level.gd) for tile zones: water, low gravity, lifts, ice. Optional.
 var env = null
 var loadout := ArmorData.neutral_loadout()
+## IX armor frame: "parts" (mixed parts) or "ultimate" (Ultimate Armor IX).
+var frame := "parts"
 var stats := ArmorData.compute(ArmorData.neutral_loadout())
 
 # Party ------------------------------------------------------------------------
@@ -289,7 +291,7 @@ func _activate(i: int) -> void:
 	visual = _visual_for(character)
 	visual.visible = true
 	attack = _module_for(character)
-	hover_left = CHARACTERS[character].hover
+	hover_left = _hover_time()
 	_recompute_stats()
 	hp_changed.emit(hp, max_hp)
 	character_changed.emit(character)
@@ -316,6 +318,8 @@ func _visual_for(id: String) -> Node2D:
 			v.character = id
 		add_child(v)
 		_visuals[id] = v
+		if id == "ix":
+			_sync_ix_visual()
 	return _visuals[id]
 
 
@@ -344,8 +348,19 @@ func _regen_partner(delta: float) -> void:
 func apply_loadout(new_loadout: Dictionary) -> void:
 	loadout = new_loadout.duplicate()
 	_recompute_stats()
+	_sync_ix_visual()
+
+
+## "parts" or "ultimate" (IX only).
+func set_frame(new_frame: String) -> void:
+	frame = new_frame
+	_recompute_stats()
+	_sync_ix_visual()
+
+
+func _sync_ix_visual() -> void:
 	if _visuals.has("ix"):
-		_visuals["ix"].part_armor = loadout.duplicate()
+		_visuals["ix"].part_armor = (ArmorData.ULTIMATE_LOADOUT if frame == "ultimate" else loadout).duplicate()
 
 
 func set_core(value: float) -> void:
@@ -586,7 +601,7 @@ func _process_move(delta: float) -> void:
 		air_dashes_left = stats.air_dashes
 		_dual_granted = false
 		flying = false
-		hover_left = CHARACTERS[character].hover
+		hover_left = _hover_time()
 	wall_dir = _probe_wall()
 	_zone = env.zone_at(global_position + Vector2(0, -BODY_SIZE.y / 2.0)) if env != null else ""
 	_on_ice = on_floor and env != null and env.is_ice_at(global_position + Vector2(0, 2))
@@ -680,7 +695,7 @@ func _process_move(delta: float) -> void:
 		velocity.y = minf(velocity.y, wall_slide_speed)
 		dash_momentum = false
 		air_dashes_left = stats.air_dashes
-		hover_left = CHARACTERS[character].hover
+		hover_left = _hover_time()
 		state = State.WALL_SLIDE
 		gliding = false
 	else:
@@ -795,10 +810,10 @@ func _start_special(kind: String) -> void:
 	hovering = false
 	air_dashing = false
 	match kind:
-		"overdrive", "tag_strike":
-			if kind == "overdrive":
+		"overdrive", "tag_strike", "nova":
+			if kind != "tag_strike":
 				set_core(0.0)
-			special_timer = overdrive_time if kind == "overdrive" else 0.25
+			special_timer = {"overdrive": overdrive_time, "nova": 0.6, "tag_strike": 0.25}[kind]
 			dash_dir = in_dir if in_dir != 0 else facing
 			facing = dash_dir
 		_:
@@ -809,8 +824,8 @@ func _start_special(kind: String) -> void:
 
 func _process_special(delta: float) -> void:
 	special_timer -= delta
-	if special_kind in ["overdrive", "tag_strike"]:
-		var speed := overdrive_speed if special_kind == "overdrive" else 380.0
+	if special_kind in ["overdrive", "tag_strike", "nova"]:
+		var speed: float = {"overdrive": overdrive_speed, "nova": 460.0, "tag_strike": 380.0}[special_kind]
 		velocity = Vector2(dash_dir * speed, 0.0)
 		if special_timer <= 0.0:
 			_end_special()
@@ -828,11 +843,11 @@ func _process_special(delta: float) -> void:
 	for body in hurtbox.get_overlapping_bodies():
 		if body.is_in_group("enemy") and not _hits.has(body):
 			_hits[body] = true
-			body.take_damage(special_damage, special_kind)
+			body.take_damage(special_damage + (2 if special_kind == "nova" else 0), special_kind)
 
 
 func _special_after_move() -> void:
-	if special_kind in ["overdrive", "tag_strike"] and is_on_wall():
+	if special_kind in ["overdrive", "tag_strike", "nova"] and is_on_wall():
 		_end_special()
 	elif special_kind == "skybreaker" and special_phase == 1 and is_on_floor():
 		special_phase = 2
@@ -868,8 +883,17 @@ func _character_down() -> void:
 	notice.emit("%s 다운 — %s 교대" % [character_name(down_id), character_name()])
 
 
+func _hover_time() -> float:
+	return maxf(CHARACTERS[character].hover, stats.get("hover", 0.0))
+
+
 func _recompute_stats() -> void:
-	stats = ArmorData.compute(loadout if character == "ix" else ArmorData.neutral_loadout())
+	if character != "ix":
+		stats = ArmorData.compute(ArmorData.neutral_loadout())
+	elif frame == "ultimate":
+		stats = ArmorData.compute_ultimate()
+	else:
+		stats = ArmorData.compute(loadout)
 	var def: Dictionary = CHARACTERS[character]
 	walk_speed = stats.walk_speed * def.walk
 	dash_speed = stats.dash_speed * def.dash
@@ -948,6 +972,7 @@ func _fire(level: int) -> void:
 		shot.breaker = stats.breaker and level > 0
 		shot.homing = stats.homing and level == 0
 		shot.pierce_all = stats.pierce_all and level == 2
+		shot.plasma = stats.plasma and level == 2
 		shot.position = origin
 		get_parent().add_child(shot)
 	shoot_pose_timer = 0.3

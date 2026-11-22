@@ -6,12 +6,17 @@ const SLOTS := ["head", "body", "arm", "leg"]
 const ARMORS := ["neutral", "vanguard", "aero"]
 const SLOT_LABEL := {"head": "HEAD", "body": "BODY", "arm": "ARM", "leg": "LEG"}
 
-const ARMOR_NAME := {"neutral": "NEUTRAL", "vanguard": "VANGUARD", "aero": "AERO"}
+const ARMOR_NAME := {"neutral": "NEUTRAL", "vanguard": "VANGUARD", "aero": "AERO", "ultimate": "ULTIMATE"}
 const ARMOR_COLOR := {
 	"neutral": Color("d7edf3"),
 	"vanguard": Color("3179e3"),
 	"aero": Color("71dedf"),
+	"ultimate": Color("8a63d2"),
 }
+
+## Ultimate Armor IX (GDD v0.2 §4-5): complete frame, no part mixing.
+const ULTIMATE_DESC := "ULTIMATE ARMOR IX — 노바 스트라이크 IX(V, 코어 100), 플라즈마 차지샷, 공중 대시·호버. 탐험 능력(균열벽·활공·비행) 없음"
+const ULTIMATE_LOADOUT := {"head": "ultimate", "body": "ultimate", "arm": "ultimate", "leg": "ultimate"}
 
 const PART_DESC := {
 	"neutral_head": "기본 헬멧",
@@ -64,6 +69,8 @@ const BASE := {
 	"flight": false,
 	"dual_core": false,
 	"special": "",
+	"hover": 0.0,
+	"plasma": false,
 }
 
 
@@ -132,6 +139,23 @@ static func sets_for(loadout: Dictionary) -> Array:
 	if a == 4:
 		out.append("aero4")
 	return out
+
+
+## Stats of the Ultimate Armor IX complete frame.
+static func compute_ultimate() -> Dictionary:
+	var s := BASE.duplicate()
+	s["dash_time"] = 0.4
+	s["core_regen_ground"] = 30.0
+	s["core_regen_air"] = 10.0
+	s["air_dashes"] = 1
+	s["hover"] = 0.5
+	s["plasma"] = true
+	s["pierce_all"] = true
+	s["special"] = "nova"
+	s["sets"] = []
+	s["vanguard"] = 0
+	s["aero"] = 0
+	return s
 
 
 static func compute(loadout: Dictionary) -> Dictionary:

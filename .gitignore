@@ -3,3 +3,6 @@ game/.godot/
 game/export/
 *.tmp
 .DS_Store
+
+# Claude Code local state (agent worktrees, settings)
+.claude/

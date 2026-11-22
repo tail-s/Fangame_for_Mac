@@ -44,6 +44,9 @@ func default_data() -> Dictionary:
 		"hp_bonus": 0,
 		"weapons": [],
 		"party": DEFAULT_PARTY.duplicate(),
+		"ultimate": false,
+		"frame": "parts",
+		"flags": [],
 	}
 
 
@@ -77,7 +80,7 @@ func load_game() -> bool:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return false
 	var d := default_data()
-	for key in ["unlocked", "cleared", "collected", "weapons"]:
+	for key in ["unlocked", "cleared", "collected", "weapons", "flags"]:
 		if typeof(parsed.get(key)) == TYPE_ARRAY:
 			for v in parsed[key]:
 				if typeof(v) == TYPE_STRING and not d[key].has(v):
@@ -86,6 +89,8 @@ func load_game() -> bool:
 	d["weapons"] = d["weapons"].filter(func(id): return WeaponShot.ORDER.has(id))
 	if _valid_party(parsed.get("party")):
 		d["party"] = parsed["party"].duplicate()
+	d["ultimate"] = parsed.get("ultimate", false) == true
+	d["frame"] = "ultimate" if d["ultimate"] and parsed.get("frame") == "ultimate" else "parts"
 	d["hp_bonus"] = clampi(int(parsed.get("hp_bonus", 0)), 0, 32)
 	data = d
 	if typeof(parsed.get("presets")) == TYPE_ARRAY:
@@ -120,6 +125,37 @@ func unlock_all() -> void:
 		if not data["weapons"].has(id):
 			data["weapons"].append(id)
 	save_game()
+
+
+# --- Ultimate Armor IX & story flags ---------------------------------------------
+
+func unlock_ultimate() -> void:
+	data["ultimate"] = true
+	save_game()
+
+
+func is_ultimate() -> bool:
+	return data.get("ultimate", false) and data.get("frame", "parts") == "ultimate"
+
+
+## "parts" (mix-and-match) or "ultimate" (only once unlocked).
+func set_frame(frame: String) -> bool:
+	if frame == "ultimate" and not data.get("ultimate", false):
+		return false
+	data["frame"] = frame
+	_refresh()
+	save_game()
+	return true
+
+
+func has_flag(flag: String) -> bool:
+	return data["flags"].has(flag)
+
+
+func set_flag(flag: String) -> void:
+	if not has_flag(flag):
+		data["flags"].append(flag)
+		save_game()
 
 
 # --- weapons & party -------------------------------------------------------------
@@ -248,7 +284,7 @@ func clear_checkpoint() -> void:
 # --- internals ----------------------------------------------------------------------
 
 func _refresh() -> void:
-	stats = ArmorData.compute(data["loadout"])
+	stats = ArmorData.compute_ultimate() if is_ultimate() else ArmorData.compute(data["loadout"])
 	loadout_changed.emit()
 
 
