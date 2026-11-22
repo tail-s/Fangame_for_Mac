@@ -115,7 +115,8 @@ func test_stage_file() -> void:
 		if c.get_script() != null and c.get_script().resource_path.ends_with("blink_platform.gd"):
 			phases[c.phase_b] = true
 	_check(phases.size() == 2, "both hologram phases (o / O) are present")
-	_check(hp_ups == 1, "one optional HP-up (%d)" % hp_ups)
+	# The shaft alcove and the revisit niche behind the cracked panel (stage_link_test.gd).
+	_check(hp_ups == 2, "two optional HP-ups (%d)" % hp_ups)
 	_check(walkers >= 2 and turrets >= 1, "a few walkers / turrets (%d / %d)" % [walkers, turrets])
 	var area := 0
 	for r in lv.solid_rects:

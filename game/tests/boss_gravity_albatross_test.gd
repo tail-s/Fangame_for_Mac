@@ -211,7 +211,8 @@ func test_relay_needs_flight() -> void:
 			touched = true
 	_check(not touched and rise > 55.0, "neutral jump (%.0f px) cannot reach the relay lift" % rise)
 	await _free(lv)
-	lv = _level()
+	# The relay hatches only open once this stage's boss is beaten (GDD §5-4, `; @alt`).
+	lv = _level(true)
 	p = await _put(lv, under)
 	p.apply_loadout({"head": "neutral", "body": "neutral", "arm": "neutral", "leg": "aero"})
 	p.set_core(100.0)
@@ -242,9 +243,10 @@ func test_relay_needs_flight() -> void:
 
 ## Upper relay: float over the spike strip into the hidden room (its trigger
 ## fires), then walk back through the lift column and drop into the hangar.
-## The hangar leads on into the main boss room.
+## The hangar leads on into the main boss room. Loaded in the after-boss layout: the
+## return-drop hatch is sealed until then (as is the hidden room, which needs bosses:6).
 func test_relay_and_boss_doors() -> void:
-	var lv = _level()
+	var lv = _level(true)
 	var kinds := []
 	lv.boss_triggered.connect(func(kind: String) -> void: kinds.append(kind))
 	var p = await _put(lv, Vector2(154 * T + 8.0, 12 * T))
@@ -354,9 +356,12 @@ func test_weakness_and_death() -> void:
 
 # --- helpers ------------------------------------------------------------------------------
 
-func _level():
+## after = true: every `; @alt` / `; @change` requirement met (boss already beaten).
+func _level(after := false):
 	var lv = Level.new()
 	lv.stage_id = "gravity_albatross"
+	if after:
+		lv.condition = func(_r): return true
 	root.add_child(lv)
 	lv.load_from_file(STAGE)
 	for c in lv.get_children():
