@@ -65,6 +65,7 @@ func _run_all() -> void:
 	await test_gimmicks()
 	await test_ultimate()
 	test_stage_registry()
+	await test_all_stages()
 	test_save_roundtrip()
 	print("\n%d passed, %d failed" % [_pass, _fail])
 	quit(1 if _fail > 0 else 0)
@@ -680,6 +681,56 @@ func test_ultimate() -> void:
 	g.unlock_ultimate()
 	_check(g.set_frame("ultimate") and g.is_ultimate() and g.stats.special == "nova", "ultimate frame after unlock")
 	g.free()
+
+
+## Every registered stage: structure checks, then a short smoke run of its bosses.
+func test_all_stages() -> void:
+	var weapons := ["refraction_beam", "gravity_wing", "heat_mirage", "freeze_lance", "core_drill", "pulse_ring"]
+	for meta in Level.load_registry("res://levels"):
+		var lv = Level.new()
+		lv.stage_id = meta.id
+		root.add_child(lv)
+		lv.load_from_file(meta.path)
+		var tag: String = meta.id
+		var ok: bool = lv.spawn != Vector2.ZERO and lv.checkpoints.size() >= 1
+		ok = ok and (lv.goal != null or lv.has_boss())
+		if meta.has("boss"):
+			ok = ok and lv.has_boss() and lv.boss_arena.size == Vector2(352, 176)
+		if meta.has("weapon"):
+			ok = ok and weapons.has(meta.weapon)
+		if meta.has("hidden_boss"):
+			ok = ok and lv.has_arena("hidden") and meta.has("hidden_id") and meta.has("hidden_require")
+		_check(ok, "stage %s: spawn, checkpoint, rooms, metadata" % tag)
+		for kind in ["main", "hidden"]:
+			var key := "boss" if kind == "main" else "hidden_boss"
+			if not meta.has(key) or not lv.has_arena(kind):
+				continue
+			var p = Player.new()
+			p.scripted = true
+			var arena: Rect2 = lv.arenas[kind].rect
+			p.position = Vector2(arena.position.x + 40.0, arena.end.y - 1.0)
+			lv.add_child(p)
+			var b = load(meta[key]).new()
+			b.arena = arena
+			b.position = lv.arenas[kind].spawn
+			b.player = p
+			lv.add_child(b)
+			var inside := true
+			for i in 240:
+				await physics_frame
+				p.invuln_timer = 1.0
+				if is_instance_valid(b) and not arena.grow(2.0).has_point(b.position):
+					inside = false
+			_check(is_instance_valid(b) and inside and b.get_max_hp() > 0,
+					"stage %s %s boss runs 4 s inside its arena" % [tag, kind])
+			if is_instance_valid(b):
+				b.queue_free()
+			p.queue_free()
+			await physics_frame
+		lv.queue_free()
+		for s in get_nodes_in_group("enemy_shot"):
+			s.queue_free()
+		await process_frame
 
 
 func test_stage_registry() -> void:
