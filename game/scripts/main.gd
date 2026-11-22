@@ -1,0 +1,402 @@
+extends Node2D
+## Game flow: title -> stage select -> stage (with checkpoints, armor lab at
+## checkpoints, pause, boss fight, clear) -> stage select.
+## Debug: `godot --path game -- --autoshot=<dir>` runs a screenshot tour.
+
+const ArmorData = preload("res://scripts/armor/armor_data.gd")
+const Level = preload("res://scripts/level/level.gd")
+const Player = preload("res://scripts/player/player.gd")
+const PrismGecko = preload("res://scripts/enemies/prism_gecko.gd")
+const Hud = preload("res://scripts/ui/hud.gd")
+const MenuScreen = preload("res://scripts/ui/menu_screen.gd")
+const ArmorLab = preload("res://scripts/ui/armor_lab.gd")
+const Backdrop = preload("res://scripts/level/backdrop.gd")
+const Autoshot = preload("res://scripts/debug/autoshot.gd")
+
+const STAGES := [
+	{"id": "training", "name": "TRAINING FACILITY", "desc": "훈련 시설 · 아머 파츠 캡슐 7개",
+			"path": "res://levels/test_stage.txt"},
+	{"id": "prism_gecko", "name": "PRISM GECKO", "desc": "광학 데이터 보관소 · 보스전",
+			"path": "res://levels/prism_gecko.txt"},
+]
+const RESPAWN_DELAY := 1.6
+const CLEAR_DELAY := 3.5
+
+var level: Node2D
+var player: CharacterBody2D
+var boss: Node2D
+var hud: CanvasLayer
+var stage: Dictionary = {}
+
+var _cam: Camera2D
+var _menu: CanvasLayer
+var _lab: CanvasLayer
+var _in_boss := false
+var _generation := 0  # bumps on every (re)load so stale timers do nothing
+
+
+func _ready() -> void:
+	_build_backdrop()
+	Game.loadout_changed.connect(_on_loadout_changed)
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--autoshot="):
+			Game.save_enabled = false
+			Game.new_game()
+			var shot := Autoshot.new()
+			shot.out_dir = arg.trim_prefix("--autoshot=")
+			shot.main = self
+			add_child(shot)
+			return
+	show_title()
+
+
+func _physics_process(_delta: float) -> void:
+	if level == null or _menu != null or _lab != null:
+		return
+	if Input.is_action_just_pressed("pause"):
+		_open_pause()
+		return
+	if Input.is_action_just_pressed("debug"):
+		hud.toggle_debug()
+	if Input.is_action_just_pressed("debug_unlock"):
+		Game.unlock_all()
+		hud.toast("디버그: 모든 아머 파츠 해금")
+	if Input.is_action_just_pressed("restart"):
+		Game.clear_checkpoint()
+		load_level()
+		return
+	if at_checkpoint():
+		hud.set_hint("↑  ARMOR LAB")
+		if Input.is_action_just_pressed("move_up"):
+			open_lab()
+	else:
+		hud.set_hint("")
+
+
+# --- screens ----------------------------------------------------------------------
+
+func show_title() -> void:
+	_leave_stage()
+	var items := []
+	if Game.has_save():
+		items.append({"id": "continue", "text": "이어하기"})
+	items.append({"id": "new", "text": "새 게임", "note": "저장 데이터를 새로 시작합니다" if Game.has_save() else ""})
+	items.append({"id": "quit", "text": "종료"})
+	_show_menu("REBIRTH PROTOCOL", "PROTOTYPE 0.1 · ORIGINAL TEST BUILD", items,
+			"↑↓ 선택   Z / Enter 결정", _on_title_choice, Callable())
+
+
+func show_select() -> void:
+	_leave_stage()
+	var items := []
+	for s in STAGES:
+		var note: String = s.desc + ("   ✓ CLEAR" if Game.is_cleared(s.id) else "")
+		items.append({"id": s.id, "text": s.name, "note": note})
+	items.append({"id": "lab", "text": "ARMOR LAB", "note": "파츠 %d / 8 · 장착 · 프리셋" % Game.unlocked_count()})
+	items.append({"id": "title", "text": "타이틀로"})
+	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 클리어 %d / %d" % [Game.max_hp(),
+			Game.unlocked_count(), Game.data["cleared"].size(), STAGES.size()],
+			items, "Z 결정   Esc 타이틀", _on_select_choice, show_title)
+
+
+func open_lab() -> void:
+	if _lab != null:
+		return
+	_lab = ArmorLab.new()
+	_lab.closed.connect(_close_lab)
+	add_child(_lab)
+	if level != null:
+		get_tree().paused = true
+
+
+func _close_lab() -> void:
+	if _lab != null:
+		_lab.queue_free()
+		_lab = null
+	if level != null:
+		get_tree().paused = false
+	else:
+		show_select()
+
+
+func _open_pause() -> void:
+	get_tree().paused = true
+	_show_menu("PAUSE", stage.get("name", ""), [
+		{"id": "resume", "text": "계속하기"},
+		{"id": "retry", "text": "체크포인트부터 다시"},
+		{"id": "exit", "text": "스테이지 나가기"},
+	], "Esc 계속", _on_pause_choice, _resume, true)
+
+
+func _resume() -> void:
+	_close_menu()
+	get_tree().paused = false
+
+
+func _on_title_choice(id: String) -> void:
+	match id:
+		"continue":
+			Game.load_game()
+			show_select()
+		"new":
+			Game.new_game()
+			Game.save_game()
+			show_select()
+		"quit":
+			get_tree().quit()
+
+
+func _on_select_choice(id: String) -> void:
+	match id:
+		"lab":
+			_close_menu()
+			open_lab()
+		"title":
+			show_title()
+		_:
+			start_stage(id)
+
+
+func _on_pause_choice(id: String) -> void:
+	match id:
+		"resume":
+			_resume()
+		"retry":
+			_resume()
+			load_level()
+		"exit":
+			show_select()
+
+
+func _show_menu(title: String, subtitle: String, items: Array, footer: String,
+		on_choice: Callable, on_cancel: Callable, dim := false) -> void:
+	_close_menu()
+	_menu = MenuScreen.new()
+	_menu.title = title
+	_menu.subtitle = subtitle
+	_menu.items = items
+	_menu.footer = footer
+	_menu.dim = dim
+	_menu.chosen.connect(on_choice)
+	if on_cancel.is_valid():
+		_menu.cancelled.connect(on_cancel)
+	add_child(_menu)
+
+
+func _close_menu() -> void:
+	if _menu != null:
+		_menu.queue_free()
+		_menu = null
+
+
+# --- stage ----------------------------------------------------------------------------
+
+func start_stage(id: String) -> void:
+	for s in STAGES:
+		if s.id == id:
+			stage = s
+	Game.clear_checkpoint()
+	_close_menu()
+	load_level()
+
+
+func load_level() -> void:
+	_generation += 1
+	_in_boss = false
+	boss = null
+	get_tree().paused = false
+	if level != null:
+		remove_child(level)
+		level.queue_free()
+	if hud == null:
+		hud = Hud.new()
+		add_child(hud)
+	hud.hide_boss()
+	hud.show_message("")
+
+	level = Level.new()
+	level.stage_id = stage.id
+	level.collected = Game.data["collected"] + Game.data["unlocked"]
+	add_child(level)
+	level.load_from_file(stage.path)
+	level.set_reveal(Game.stats.reveal)
+	level.pickup_collected.connect(_on_pickup)
+	level.boss_triggered.connect(_on_boss_trigger)
+	for cp in level.checkpoints:
+		cp.reached.connect(_on_checkpoint)
+		if Game.has_checkpoint and cp.global_position == Game.checkpoint:
+			cp.activate(false)
+	if level.goal != null:
+		level.goal.reached.connect(_on_goal)
+
+	player = Player.new()
+	player.max_hp = Game.max_hp()
+	player.position = Game.checkpoint if Game.has_checkpoint else level.spawn
+	level.add_child(player)
+	player.apply_loadout(Game.loadout())
+	player.kill_y = level.pixel_size().y + 48.0
+	player.reset_physics_interpolation()
+	player.hp_changed.connect(hud.set_hp)
+	player.core_changed.connect(hud.set_core)
+	player.died.connect(_on_player_died)
+	hud.player = player
+	hud.set_hp(player.hp, player.max_hp)
+	hud.set_core(player.core, Player.CORE_MAX)
+	hud.set_loadout(Game.loadout())
+
+	_cam = Camera2D.new()
+	_cam.position = Vector2(0, -16)
+	_set_camera_limits(Rect2(Vector2.ZERO, level.pixel_size()))
+	_cam.drag_vertical_enabled = true
+	_cam.drag_top_margin = 0.35
+	_cam.drag_bottom_margin = 0.1
+	_cam.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+	player.add_child(_cam)
+	_cam.make_current()
+	_cam.reset_smoothing()
+
+
+## True while the player stands still at an activated checkpoint (safe zone).
+func at_checkpoint() -> bool:
+	if player == null or not player.is_alive() or not player.is_on_floor():
+		return false
+	for cp in level.checkpoints:
+		if cp.active and absf(player.global_position.x - cp.global_position.x) < 14.0 \
+				and absf(player.global_position.y - cp.global_position.y) < 4.0:
+			return true
+	return false
+
+
+func _leave_stage() -> void:
+	_generation += 1
+	get_tree().paused = false
+	_close_menu()
+	if _lab != null:
+		_lab.queue_free()
+		_lab = null
+	if level != null:
+		remove_child(level)
+		level.queue_free()
+		level = null
+	if hud != null:
+		hud.queue_free()
+		hud = null
+	player = null
+	boss = null
+	_in_boss = false
+
+
+func _set_camera_limits(r: Rect2) -> void:
+	_cam.limit_left = int(r.position.x)
+	_cam.limit_top = int(r.position.y)
+	_cam.limit_right = int(r.end.x)
+	_cam.limit_bottom = int(r.end.y)
+
+
+func _on_loadout_changed() -> void:
+	if player != null and is_instance_valid(player):
+		player.apply_loadout(Game.loadout())
+		hud.set_loadout(Game.loadout())
+	if level != null:
+		level.set_reveal(Game.stats.reveal)
+
+
+func _on_checkpoint(pos: Vector2) -> void:
+	Game.set_checkpoint(pos)
+	hud.toast("체크포인트 — ↑ 로 아머 랩", 2.0)
+
+
+func _on_pickup(pk) -> void:
+	if pk.kind == "part":
+		Game.unlock(pk.part_id)
+		hud.toast("%s 획득!\n%s\n체크포인트에서 ↑ 로 장착" % [ArmorData.part_name(pk.part_id),
+				ArmorData.PART_DESC[pk.part_id]], 4.5)
+	else:
+		Game.collect(pk.pickup_id)
+		Game.add_hp_bonus(2)
+		player.max_hp = Game.max_hp()
+		player.heal_full()
+		hud.toast("HP 상한 +2", 3.0)
+
+
+func _on_boss_trigger() -> void:
+	if _in_boss or not level.has_boss():
+		return
+	_in_boss = true
+	level.close_door()
+	_set_camera_limits(level.boss_camera)
+	_cam.reset_smoothing()
+	player.control_lock = 1.6
+	boss = PrismGecko.new()
+	boss.arena = level.boss_arena
+	boss.position = level.boss_spawn
+	boss.player = player
+	level.add_child(boss)
+	boss.hp_changed.connect(hud.set_boss_hp)
+	boss.defeated.connect(_on_boss_defeated)
+	hud.set_boss_hp(boss.hp, PrismGecko.MAX_HP)
+	hud.show_message("WARNING")
+	var gen := _generation
+	await get_tree().create_timer(1.4).timeout
+	if gen == _generation and hud != null:
+		hud.show_message("")
+
+
+func _on_boss_defeated() -> void:
+	hud.hide_boss()
+	_finish_stage("MISSION COMPLETE")
+
+
+func _on_goal() -> void:
+	_finish_stage("STAGE CLEAR")
+
+
+func _finish_stage(text: String) -> void:
+	var gen := _generation
+	player.freeze()
+	hud.show_message(text)
+	Game.mark_cleared(stage.id)
+	await get_tree().create_timer(CLEAR_DELAY).timeout
+	if gen == _generation:
+		show_select()
+
+
+func _on_player_died() -> void:
+	var gen := _generation
+	Game.deaths += 1
+	await get_tree().create_timer(RESPAWN_DELAY).timeout
+	if gen == _generation:
+		load_level()
+
+
+func _build_backdrop() -> void:
+	var sky := CanvasLayer.new()
+	sky.layer = -10
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color("0a1326"))
+	gradient.set_color(1, Color("1c2f52"))
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.fill_to = Vector2(0, 1)
+	tex.width = 4
+	tex.height = 64
+	var rect := TextureRect.new()
+	rect.texture = tex
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.size = Vector2(384, 216)
+	sky.add_child(rect)
+	add_child(sky)
+
+	# [scroll scale, colour, seed, max tower height]
+	for spec in [[0.2, Color("101f3a"), 3, 230.0], [0.45, Color("15294a"), 7, 170.0]]:
+		var layer := Parallax2D.new()
+		layer.scroll_scale = Vector2(spec[0], spec[0] * 0.5)
+		layer.repeat_size = Vector2(Backdrop.WIDTH, 0)
+		layer.repeat_times = 3
+		layer.z_index = -5
+		var towers := Backdrop.new()
+		towers.color = spec[1]
+		towers.seed_value = spec[2]
+		towers.max_height = spec[3]
+		layer.add_child(towers)
+		add_child(layer)

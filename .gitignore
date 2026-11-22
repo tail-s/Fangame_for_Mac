@@ -1,0 +1,5 @@
+# Godot 4 caches
+game/.godot/
+game/export/
+*.tmp
+.DS_Store
