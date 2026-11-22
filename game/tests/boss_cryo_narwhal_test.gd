@@ -70,7 +70,8 @@ func test_stage_file() -> void:
 		if c.get("kind") == "hp":
 			hp_up += 1
 	_check(enemies >= 3, "a few walkers / turrets (%d)" % enemies)
-	_check(hp_up == 1, "one optional HP-up")
+	# The tank alcove and the Aero LEG ledge over the hangar (stage_link_test.gd).
+	_check(hp_up == 2, "two optional HP-ups (%d)" % hp_up)
 	# The boss room has a flooded seabed band; ~ cells count as empty for the arena.
 	_check(lv.zone_at(Vector2(arena.get_center().x, arena.end.y - 8.0)) == "water"
 			and lv.zone_at(arena.get_center()) == "", "boss room seabed band is flooded")
@@ -144,7 +145,8 @@ func test_traversal() -> void:
 	await _walk(p, -1, 114.5 * T)
 	var hp_left := 0
 	for c in lv.get_children():
-		if c.get("kind") == "hp" and not c.is_queued_for_deletion():
+		# Only the tank's HP-up (the hangar ledge one is tested in stage_link_test.gd).
+		if c.get("kind") == "hp" and c.position.x > 100 * T and not c.is_queued_for_deletion():
 			hp_left += 1
 	_check(_on(p, 114, 117, 8) and hp_left == 0, "tank: dash jump under the ceiling reaches the HP-up (%s)" % str(p.position))
 	await _walk(p, 1, 117.0 * T)
