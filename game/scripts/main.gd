@@ -267,8 +267,8 @@ func show_select() -> void:
 				"note": _select_note(s, locked)})
 	items.append({"id": "lab", "text": "ARMOR LAB", "note": "파츠 %d / 8 · 장착 · 프리셋" % Game.unlocked_count()})
 	items.append({"id": "title", "text": "타이틀로"})
-	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 보스 %d / 6" % [Game.max_hp(),
-			Game.unlocked_count(), bosses_cleared()],
+	_show_menu("STAGE SELECT", "HP %d · 파츠 %d / 8 · 보스 %d / 6 · 난이도 %s" % [Game.max_hp(),
+			Game.unlocked_count(), bosses_cleared(), Game.DIFFICULTY_NAME[Game.settings.difficulty]],
 			items, "Z 결정   Esc 타이틀", _on_select_choice, show_title)
 
 
