@@ -346,6 +346,7 @@ func test_frame_cost() -> void:
 	var names: Array = audio.SFX_NAMES
 	var tracks := ["training", "boss", "prism_gecko", "final_boss", "cryo_narwhal", "boss", "ending"]
 	var worst_call := 0
+	var calls: Array[int] = []
 	var start := Time.get_ticks_msec()
 	var frames := 0
 	while Time.get_ticks_msec() - start < 7000:
@@ -354,7 +355,9 @@ func test_frame_cost() -> void:
 		var t0 := Time.get_ticks_usec()
 		for j in 3:
 			audio.sfx(names[(frames * 3 + j) % names.size()], 0.9 + 0.1 * j)
-		worst_call = maxi(worst_call, Time.get_ticks_usec() - t0)
+		var took := Time.get_ticks_usec() - t0
+		worst_call = maxi(worst_call, took)
+		calls.append(took)
 		frames += 1
 		await process_frame
 		OS.delay_msec(10)  # leave real time for the audio thread to consume frames
@@ -363,8 +366,15 @@ func test_frame_cost() -> void:
 	print("  frame cost over %d frames: _process worst %.3f ms, avg %.3f ms; 3x sfx() worst %.3f ms; music() worst %.3f ms; skips %d"
 			% [pf, audio.stats.process_max_usec / 1000.0, avg / 1000.0, worst_call / 1000.0,
 			audio.stats.music_max_usec / 1000.0, audio._active.pb.get_skips() if audio._active and audio._active.pb else -1])
-	_check(audio.stats.process_max_usec < 1500, "worst _process %.3f ms (< 1.5 ms)" % [audio.stats.process_max_usec / 1000.0])
-	_check(worst_call < 1500, "worst 3 x sfx() in one frame %.3f ms (< 1.5 ms)" % [worst_call / 1000.0])
+	# Wall-clock budgets: one OS scheduling hiccup can spike a single frame, so the
+	# budget applies to the typical cost (average / 99th percentile) and the worst
+	# frame only has to stay clear of a real hitch.
+	calls.sort()
+	var p99: int = calls[int(calls.size() * 0.99)] if not calls.is_empty() else 0
+	_check(avg < 400.0 and audio.stats.process_max_usec < 5000,
+			"_process avg %.3f ms (< 0.4 ms), worst %.3f ms (< 5 ms)" % [avg / 1000.0, audio.stats.process_max_usec / 1000.0])
+	_check(p99 < 1500 and worst_call < 5000,
+			"3 x sfx() in one frame: p99 %.3f ms (< 1.5 ms), worst %.3f ms (< 5 ms)" % [p99 / 1000.0, worst_call / 1000.0])
 	_check(audio.stats.music_max_usec < 15000, "worst music() call %.3f ms (< 15 ms)" % [audio.stats.music_max_usec / 1000.0])
 	print("  memory: audio data held %.1f MB (cached tracks + effects), static total %.1f MB"
 			% [audio.memory_bytes() / 1048576.0, OS.get_static_memory_usage() / 1048576.0])
