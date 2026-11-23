@@ -5,6 +5,7 @@ extends CanvasLayer
 const ArmorData = preload("res://scripts/armor/armor_data.gd")
 const PixelArt = preload("res://scripts/fx/pixel_art.gd")
 const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
+const InputSetup = preload("res://scripts/core/input_setup.gd")
 
 const C_BG := Color("0a1326")
 const C_FRAME := Color("497593")
@@ -81,7 +82,7 @@ func _ready() -> void:
 	_toast = _label(9, Vector2(0, 26), Vector2(384, 30), HORIZONTAL_ALIGNMENT_CENTER)
 	_hint = _label(8, Vector2(0, 186), Vector2(384, 12), HORIZONTAL_ALIGNMENT_CENTER)
 	_help = _label(8, Vector2(6, 202), Vector2(372, 12), HORIZONTAL_ALIGNMENT_LEFT)
-	_help.text = "이동 ←→  점프 Z  공격 X  대시 C  특수 V  무기/검술 Q·E  교대 Tab  일시정지 Esc"
+	_help.text = help_text()
 	_debug = _label(8, Vector2(236, 4), Vector2(144, 40), HORIZONTAL_ALIGNMENT_LEFT)
 	_debug.visible = false
 	var tween := create_tween()
@@ -388,3 +389,16 @@ func _label(font_size: int, pos: Vector2, box: Vector2, align: HorizontalAlignme
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(l)
 	return l
+
+
+## One-line control hint built from the current key bindings (OPTIONS → 키 설정).
+static func help_text() -> String:
+	var short := {"Left": "←", "Right": "→", "Up": "↑", "Down": "↓", "Escape": "Esc"}
+	var k := func(action: String) -> String:
+		var code := InputSetup.key_of(action)
+		var name := OS.get_keycode_string(code) if code != 0 else "—"
+		return short.get(name, name)
+	return "이동 %s%s  점프 %s  공격 %s  대시 %s  특수 %s  무기 %s·%s  교대 %s  아머 %s  일시정지 %s" % [
+			k.call("move_left"), k.call("move_right"), k.call("jump"), k.call("shoot"), k.call("dash"),
+			k.call("special"), k.call("weapon_prev"), k.call("weapon_next"), k.call("tag"), k.call("armor_swap"),
+			k.call("pause")]
