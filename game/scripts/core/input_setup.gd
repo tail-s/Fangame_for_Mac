@@ -14,6 +14,7 @@ const KEYS := {
 	"weapon_prev": [KEY_Q],
 	"weapon_next": [KEY_E],
 	"tag": [KEY_TAB, KEY_F],
+	"armor_swap": [KEY_G],
 	"restart": [KEY_R],
 	"pause": [KEY_ESCAPE, KEY_P],
 	"confirm": [KEY_ENTER, KEY_KP_ENTER, KEY_Z, KEY_SPACE],
@@ -45,7 +46,12 @@ const AXES := {
 	"move_up": [JOY_AXIS_LEFT_Y, -1.0],
 	"move_down": [JOY_AXIS_LEFT_Y, 1.0],
 	"tag": [JOY_AXIS_TRIGGER_LEFT, 1.0],
+	"armor_swap": [JOY_AXIS_TRIGGER_RIGHT, 1.0],
 }
+
+## Actions the player can rebind in OPTIONS → 키 설정 (keyboard only; gamepad stays).
+const REMAPPABLE := ["move_left", "move_right", "move_up", "move_down", "jump", "shoot", "dash",
+		"special", "weapon_prev", "weapon_next", "tag", "armor_swap", "pause"]
 
 
 static func register() -> void:
@@ -66,3 +72,39 @@ static func register() -> void:
 			jm.axis = AXES[action][0]
 			jm.axis_value = AXES[action][1]
 			InputMap.action_add_event(action, jm)
+
+
+## Replaces the keyboard keys of the remappable actions: a custom physical keycode
+## from `custom` (action -> int) if present, otherwise the defaults in KEYS.
+static func rebuild_keys(custom: Dictionary) -> void:
+	for action in REMAPPABLE:
+		if not InputMap.has_action(action):
+			continue
+		for ev in InputMap.action_get_events(action):
+			if ev is InputEventKey:
+				InputMap.action_erase_event(action, ev)
+		var keys: Array = [custom[action]] if custom.has(action) else KEYS[action]
+		for key in keys:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = int(key)
+			InputMap.action_add_event(action, ev)
+
+
+## Physical keycode of an action's first keyboard key (0 if none).
+static func key_of(action: String) -> int:
+	if not InputMap.has_action(action):
+		return 0
+	for ev in InputMap.action_get_events(action):
+		if ev is InputEventKey:
+			return ev.physical_keycode
+	return 0
+
+
+## Readable key names for an action ("Z / Space").
+static func key_label(action: String) -> String:
+	var names := []
+	if InputMap.has_action(action):
+		for ev in InputMap.action_get_events(action):
+			if ev is InputEventKey:
+				names.append(OS.get_keycode_string(ev.physical_keycode))
+	return " / ".join(names) if not names.is_empty() else "—"

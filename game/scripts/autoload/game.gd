@@ -49,7 +49,7 @@ var silent := false
 func default_settings() -> Dictionary:
 	# Music starts off (it startled people at launch); raise it in OPTIONS.
 	return {"music": 0, "sfx": 8, "difficulty": "normal", "shake": true, "flashes": true,
-			"fullscreen": false}
+			"fullscreen": false, "keys": {}}
 
 
 ## Loads user://settings.cfg (ignoring bad values) and applies it.
@@ -65,6 +65,12 @@ func load_settings() -> void:
 		settings.sfx = clampi(settings.sfx, 0, 10)
 		if not DIFFICULTIES.has(settings.difficulty):
 			settings.difficulty = "normal"
+		# Custom keys: only remappable actions, only key codes.
+		var keys := {}
+		for action in settings.keys:
+			if InputSetup.REMAPPABLE.has(action) and typeof(settings.keys[action]) in [TYPE_INT, TYPE_FLOAT]:
+				keys[action] = int(settings.keys[action])
+		settings.keys = keys
 	apply_settings()
 
 
@@ -84,6 +90,7 @@ func set_setting(key: String, value) -> void:
 
 
 func apply_settings() -> void:
+	InputSetup.rebuild_keys(settings.get("keys", {}))
 	var audio := get_node_or_null("/root/Audio")
 	if audio != null:
 		if silent:

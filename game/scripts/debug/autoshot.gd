@@ -402,6 +402,21 @@ func _tour() -> void:
 	_teleport(Vector2(109 * 16 + 8, 18 * 16))
 	await _frames(40)
 	await _shot("42_terra_maglev_open")
+	# Phase 7 screens: gallery (armor / bosses / records) and key settings, from the title.
+	main.show_title()
+	await _frames(4)
+	main.show_gallery("armor", 2)
+	await _frames(12)
+	await _shot("43_gallery_armor")
+	main.show_gallery("bosses", 1)
+	await _frames(12)
+	await _shot("44_gallery_bosses")
+	main.show_gallery("records", 0)
+	await _frames(8)
+	await _shot("45_gallery_records")
+	main.show_keys(main.show_title)
+	await _frames(8)
+	await _shot("46_keys")
 	get_tree().quit()
 
 

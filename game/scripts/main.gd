@@ -17,6 +17,8 @@ const StageSelectPanel = preload("res://scripts/ui/stage_select_panel.gd")
 const BossCutin = preload("res://scripts/ui/boss_cutin.gd")
 const TitleHeroes = preload("res://scripts/ui/title_heroes.gd")
 const DepthProps = preload("res://scripts/level/backdrops/depth_props.gd")
+const InputSetup = preload("res://scripts/core/input_setup.gd")
+const GalleryPanel = preload("res://scripts/ui/gallery_panel.gd")
 const FlowCheck = preload("res://scripts/debug/flow_check.gd")
 
 const LEVEL_DIR := "res://levels"
@@ -47,6 +49,9 @@ var _shake_strength := 0.0
 var _last_hp := -1
 ## Boss track that follows the boss_intro sting.
 var _after_intro := ""
+## Armor preset swap in battle (GDD §4-1 "전투 중 제한된 교체"): cooldown left.
+var _swap_cd := 0.0
+var _swap_index := -1
 
 
 func _ready() -> void:
@@ -102,9 +107,12 @@ func shake(strength: float, seconds: float) -> void:
 	_shake_total = seconds
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if level == null or _menu != null or _lab != null:
 		return
+	_swap_cd = maxf(_swap_cd - delta, 0.0)
+	if Input.is_action_just_pressed("armor_swap"):
+		_try_armor_swap()
 	if Input.is_action_just_pressed("pause"):
 		_open_pause()
 		return
@@ -134,7 +142,9 @@ func show_title() -> void:
 	if Game.has_save():
 		items.append({"id": "continue", "text": "이어하기"})
 	items.append({"id": "new", "text": "새 게임", "note": "저장 데이터를 새로 시작합니다" if Game.has_save() else ""})
-	items.append({"id": "options", "text": "옵션", "note": "음량 · 난이도 · 화면 흔들림 · 깜박임 · 조작"})
+	if Game.has_save():
+		items.append({"id": "gallery", "text": "갤러리", "note": "아머 · 보스 · 기록"})
+	items.append({"id": "options", "text": "옵션", "note": "음량 · 난이도 · 키 · 조작"})
 	items.append({"id": "quit", "text": "종료"})
 	get_tree().call_group("backdrop", "set_theme", "title")
 	_show_menu("REBIRTH PROTOCOL", "ORIGINAL FAN-INSPIRED BUILD  —  PROTOTYPE 0.8", items,
@@ -153,6 +163,7 @@ func show_options(back: Callable) -> void:
 	for id in OPTION_IDS:
 		var row := _option_row(id)
 		items.append({"id": id, "text": row[0], "note": row[1], "adjust": true})
+	items.append({"id": "keys", "text": "키 설정", "note": "키보드 키 바꾸기 (게임패드는 그대로)"})
 	items.append({"id": "controls", "text": "조작 안내", "note": "키보드 · 게임패드 버튼 목록"})
 	items.append({"id": "back", "text": "돌아가기"})
 	_show_menu("OPTIONS", "← → 값 변경 · 자동 저장", items, "Z 결정   Esc 돌아가기",
@@ -206,15 +217,22 @@ func _on_option_choice(id: String, back: Callable) -> void:
 		_on_option_adjust(id, 1)
 	elif id == "controls":
 		_show_controls(back)
+	elif id == "keys":
+		show_keys(back)
 	else:
 		back.call()
 
 
 func _show_controls(back: Callable) -> void:
+	var k := func(action: String) -> String: return InputSetup.key_label(action)
 	var rows := [
-		["이동", "← → · A D  /  스틱 · 십자키"], ["점프", "Z · Space  /  A"], ["공격 (길게: 차지)", "X · J  /  X"],
-		["대시", "C · K · Shift  /  B"], ["필살기", "V · L  /  Y"], ["특수무기 전환", "Q · E  /  LB · RB"],
-		["캐릭터 교대 · 태그", "Tab · F  /  LT"], ["아머 랩 (체크포인트)", "↑"], ["일시정지", "Esc · P  /  Start"],
+		["이동", "%s · %s  /  스틱 · 십자키" % [k.call("move_left"), k.call("move_right")]],
+		["점프", "%s  /  A" % k.call("jump")], ["공격 (길게: 차지)", "%s  /  X" % k.call("shoot")],
+		["대시", "%s  /  B" % k.call("dash")], ["필살기", "%s  /  Y" % k.call("special")],
+		["특수무기 전환", "%s · %s  /  LB · RB" % [k.call("weapon_prev"), k.call("weapon_next")]],
+		["캐릭터 교대 · 태그", "%s  /  LT" % k.call("tag")],
+		["아머 프리셋 교체 (IX, 전투 중)", "%s  /  RT — 코어 %d, 대기 %d초" % [k.call("armor_swap"), int(SWAP_COST), int(SWAP_COOLDOWN)]],
+		["아머 랩 (체크포인트)", "↑"], ["일시정지", "%s  /  Start" % k.call("pause")],
 		["체크포인트부터 다시", "R  /  Back"],
 	]
 	var items := []
@@ -222,6 +240,223 @@ func _show_controls(back: Callable) -> void:
 		items.append({"id": "back", "text": r[0], "note": r[1]})
 	_show_menu("CONTROLS", "↑↓ 로 항목을 고르면 아래에 키가 표시됩니다", items, "Z / Esc 돌아가기",
 			func(_id: String) -> void: show_options(back), show_options.bind(back), level != null)
+
+
+# --- gallery (GDD §7-2) -----------------------------------------------------------------
+
+const GALLERY_TABS := ["armor", "bosses", "records"]
+const GALLERY_TAB_NAME := {"armor": "ARMOR", "bosses": "BOSSES", "records": "RECORDS"}
+
+
+func show_gallery(tab := "armor", selected := 0) -> void:
+	var rows := _gallery_rows(tab)
+	var items := []
+	var entries := []
+	for r in rows:
+		items.append({"id": r.id, "text": r.text, "note": r.note, "adjust": true})
+		entries.append(r.entry)
+	var tabs := []
+	for t in GALLERY_TABS:
+		tabs.append(("◀ %s ▶" % GALLERY_TAB_NAME[t]) if t == tab else GALLERY_TAB_NAME[t])
+	_show_menu("GALLERY", "  ".join(tabs), items, "↑↓ 선택   ← → 탭   Esc 타이틀",
+			func(_id: String) -> void: pass, show_title, false, clampi(selected, 0, items.size() - 1), "split")
+	_menu.adjusted.connect(func(_id: String, dir: int) -> void:
+		var i := posmod(GALLERY_TABS.find(tab) + dir, GALLERY_TABS.size())
+		show_gallery(GALLERY_TABS[i]))
+	var panel := GalleryPanel.new()
+	panel.entries = entries
+	panel.index = _menu.selected
+	_menu.add_child(panel)
+	_menu.highlighted.connect(panel.show_index)
+
+
+## [{id, text, note, entry}] for one gallery tab.
+func _gallery_rows(tab: String) -> Array:
+	var rows := []
+	match tab:
+		"armor":
+			for armor in ["vanguard", "aero"]:
+				for slot in ArmorData.SLOTS:
+					var id := ArmorData.part_id(armor, slot)
+					var have := Game.is_unlocked(id)
+					var where := _capsule_stage(id)
+					rows.append({"id": id, "text": ArmorData.part_name(id) if have else "???  (%s)" % ArmorData.SLOT_LABEL[slot],
+							"note": ArmorData.PART_DESC[id] if have else "미획득 — %s 어딘가의 캡슐" % where,
+							"entry": {"kind": "armor", "name": ArmorData.part_name(id) if have else "???", "part": id,
+									"unlocked": have, "status": ("획득 · " + where) if have else "미획득"}})
+			var ult: bool = Game.data.get("ultimate", false)
+			rows.append({"id": "ultimate", "text": "ULTIMATE ARMOR IX" if ult else "???  (완성형 프레임)",
+					"note": ArmorData.ULTIMATE_DESC if ult else "어느 히든 보스가 갖고 있다는 기록이 있다",
+					"entry": {"kind": "armor", "name": "ULTIMATE ARMOR IX" if ult else "???", "part": "ultimate",
+							"unlocked": ult, "status": "획득" if ult else "미획득"}})
+		"bosses":
+			for s in stages:
+				if s.has("boss"):
+					var won := Game.is_cleared(s.id)
+					rows.append({"id": s.id, "text": s.get("name", s.id) if won else "???",
+							"note": s.get("desc", "") if won else "아직 쓰러뜨리지 않은 상대",
+							"entry": {"kind": "boss", "name": s.get("name", s.id) if won else "???", "portrait": s.id,
+									"unlocked": won, "status": "격파" if won else "기록 없음"}})
+				if s.has("hidden_boss"):
+					var hid: String = s.get("hidden_id", "")
+					var won := Game.is_cleared("hidden_" + hid)
+					var hname: String = {"eclipse": "ECLIPSE", "fragment": "FRAGMENT Λ"}.get(hid, hid.to_upper())
+					rows.append({"id": "hidden_" + hid, "text": hname if won else "◈ ???",
+							"note": ("히든 보스 · %s 구역" % s.get("name", "")) if won else "미확인 신호",
+							"entry": {"kind": "boss", "name": hname if won else "◈ ???", "portrait": hid,
+									"unlocked": won, "status": "격파 (히든)" if won else "미확인 신호"}})
+		"records":
+			var cleared := stages.filter(func(st): return Game.is_cleared(st.id)).size()
+			var hidden := ["eclipse", "fragment"].filter(func(h): return Game.is_cleared("hidden_" + h)).size()
+			var weapons: int = Game.data.get("weapons", []).size()
+			var endings := []
+			for k in [["normal", "일반"], ["extended", "확장"], ["true", "진"]]:
+				endings.append(("%s ✓" % k[1]) if Game.has_flag("ending_" + k[0]) else ("%s —" % k[1]))
+			var seen := ["normal", "extended", "true"].filter(func(k): return Game.has_flag("ending_" + k)).size()
+			var recs := [
+				["stages", "스테이지 클리어  %d / %d" % [cleared, stages.size()], float(cleared) / maxf(stages.size(), 1)],
+				["bosses", "보스 격파  %d / 6" % bosses_cleared(), bosses_cleared() / 6.0],
+				["hidden", "히든 보스  %d / 2" % hidden, hidden / 2.0],
+				["parts", "아머 파츠  %d / 8" % Game.unlocked_count(), Game.unlocked_count() / 8.0],
+				["weapons", "특수무기  %d / 6" % weapons, weapons / 6.0],
+				["hp", "HP 상한  %d" % Game.max_hp(), clampf((Game.max_hp() - 16) / 16.0, 0.0, 1.0)],
+				["endings", "엔딩  %s" % "  ".join(endings), seen / 3.0],
+			]
+			for r in recs:
+				rows.append({"id": r[0], "text": r[1], "note": "",
+						"entry": {"kind": "record", "name": "RECORDS", "status": r[1], "value": r[2], "unlocked": true}})
+	return rows
+
+
+## Name of the stage whose map holds the capsule for `part` (a real stage before
+## the training room, which keeps practice capsules).
+func _capsule_stage(part: String) -> String:
+	var ordered := stages.filter(func(st): return st.id != "training")
+	ordered.append_array(stages.filter(func(st): return st.id == "training"))
+	for code in ArmorData.CAPSULE_CODES:
+		if ArmorData.CAPSULE_CODES[code] != part:
+			continue
+		for s in ordered:
+			var text := FileAccess.get_file_as_string(s.path)
+			for line in text.split("\n"):
+				if not line.begins_with(";") and line.contains(code):
+					return s.get("name", s.id)
+	return "어느 스테이지"
+
+
+# --- key settings (OPTIONS → 키 설정) ------------------------------------------------
+
+const KEY_ROWS := [["move_left", "왼쪽"], ["move_right", "오른쪽"], ["move_up", "위 · 조준"],
+		["move_down", "아래"], ["jump", "점프"], ["shoot", "공격"], ["dash", "대시"], ["special", "필살기 · 특수"],
+		["weapon_prev", "무기 ←"], ["weapon_next", "무기 →"], ["tag", "캐릭터 교대"],
+		["armor_swap", "아머 프리셋 교체"], ["pause", "일시정지"]]
+
+
+func show_keys(back: Callable, selected := 0) -> void:
+	var items := []
+	for row in KEY_ROWS:
+		items.append({"id": row[0], "text": "%s   %s" % [row[1], InputSetup.key_label(row[0])],
+				"note": "Z 를 누른 뒤 새 키를 누르세요 (Esc 취소). 다른 동작이 쓰던 키면 서로 바뀝니다"})
+	items.append({"id": "reset", "text": "기본값으로", "note": "모든 키를 처음 설정으로 되돌립니다"})
+	items.append({"id": "back", "text": "돌아가기"})
+	_show_menu("KEYS", "키보드 키 바꾸기 · 게임패드는 그대로", items, "Z 바꾸기   Esc 돌아가기",
+			_on_key_choice.bind(back), show_options.bind(back), level != null, selected)
+
+
+func _on_key_choice(id: String, back: Callable) -> void:
+	match id:
+		"back":
+			show_options(back)
+		"reset":
+			Game.set_setting("keys", {})
+			show_keys(back, _menu.selected)
+		_:
+			_capture_key(id, back)
+
+
+## Waits for the next key press and binds it to `action`.
+func _capture_key(action: String, back: Callable) -> void:
+	var idx: int = _menu.selected
+	_menu.set_process(false)
+	var label: String = KEY_ROWS.filter(func(r): return r[0] == action)[0][1]
+	_menu.update_item(action, "%s   ▶ ?" % label, "새 키를 누르세요 — Esc 취소")
+	var cap := KeyCapture.new()
+	add_child(cap)
+	var code: int = await cap.captured
+	cap.queue_free()
+	if code != KEY_ESCAPE and code != 0:
+		assign_key(action, code)
+	show_keys(back, idx)
+
+
+## Binds `code` (physical keycode) to `action`; an action already using it gets
+## this action's old key (a swap).
+func assign_key(action: String, code: int) -> void:
+	var keys: Dictionary = Game.settings.get("keys", {}).duplicate()
+	var old := InputSetup.key_of(action)
+	for other in InputSetup.REMAPPABLE:
+		if other == action:
+			continue
+		for ev in InputMap.action_get_events(other):
+			if ev is InputEventKey and ev.physical_keycode == code:
+				keys[other] = old
+	keys[action] = code
+	Game.set_setting("keys", keys)
+
+
+class KeyCapture extends Node:
+	signal captured(code: int)
+
+	func _ready() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+
+	func _input(event: InputEvent) -> void:
+		if event is InputEventKey and event.pressed and not event.echo:
+			get_viewport().set_input_as_handled()
+			captured.emit(event.physical_keycode if event.physical_keycode != 0 else event.keycode)
+
+
+# --- armor preset swap in battle (GDD §4-1) ------------------------------------------
+
+const SWAP_COST := 25.0
+const SWAP_COOLDOWN := 8.0
+
+
+## Switches IX to the next saved preset that differs from the current parts.
+## Limited: costs core gauge and has a cooldown; not in the Ultimate frame.
+func _try_armor_swap() -> bool:
+	if player == null or not is_instance_valid(player):
+		return false
+	if player.character != "ix":
+		hud.toast("아머 교체는 IX만 할 수 있어요", 1.6)
+		return false
+	if Game.is_ultimate():
+		hud.toast("얼티밋 프레임 중에는 파츠를 바꿀 수 없어요 (아머 랩에서 전환)", 2.0)
+		return false
+	if _swap_cd > 0.0:
+		hud.toast("아머 교체 대기 %d초" % ceili(_swap_cd), 1.2)
+		return false
+	if player.core < SWAP_COST:
+		hud.toast("코어 부족 — 아머 교체에 %d 필요" % int(SWAP_COST), 1.6)
+		return false
+	var cur: Dictionary = Game.loadout()
+	for k in range(1, Game.PRESET_COUNT + 1):
+		var i := posmod(_swap_index + k, Game.PRESET_COUNT)
+		var p = Game.preset(i)
+		if p == null or p == cur:
+			continue
+		if Game.load_preset(i):
+			_swap_index = i
+			player.core -= SWAP_COST
+			_swap_cd = SWAP_COOLDOWN
+			Audio.sfx("weapon_switch")
+			var names := []
+			for slot in ArmorData.SLOTS:
+				names.append("%s %s" % [ArmorData.SLOT_LABEL[slot].substr(0, 1), ArmorData.ARMOR_NAME[p[slot]]])
+			hud.toast("프리셋 %d 장착 — %s" % [i + 1, " · ".join(names)], 2.2)
+			return true
+	hud.toast("바꿀 프리셋이 없어요 — 체크포인트 아머 랩에서 저장하세요", 2.2)
+	return false
 
 
 static func load_stage_registry() -> Array:
@@ -399,6 +634,9 @@ func _on_title_choice(id: String) -> void:
 			Game.new_game()
 			Game.save_game()
 			play_story(Story.PROLOGUE, show_select)
+		"gallery":
+			Game.load_game()
+			show_gallery()
 		"options":
 			show_options(show_title)
 		"quit":

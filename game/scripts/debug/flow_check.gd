@@ -30,6 +30,9 @@ func _run() -> void:
 		await _check_shake()
 		await _check_pause_options()
 		await _check_boss_music()
+		await _check_keys()
+		await _check_armor_swap()
+		await _check_gallery()
 	print("%d passed, %d failed" % [_pass, _fail])
 	get_tree().quit(1 if _fail > 0 else 0)
 
@@ -107,7 +110,7 @@ func _check_options() -> void:
 	_check(Audio.current_track == "title", "title music starts")
 	main.show_options(main.show_title)
 	await _frames(3)
-	_check(main._menu.items.size() == 8 and main._menu._compact(), "options menu: 8 rows, compact layout")
+	_check(main._menu.items.size() == 9 and main._menu._compact(), "options menu: 9 rows, compact layout")
 	main._on_option_adjust("music", -1)
 	main._on_option_adjust("difficulty", 1)
 	main._on_option_adjust("shake", 1)
@@ -254,6 +257,76 @@ func _check_boss_music() -> void:
 	_check(Audio.current_track == "boss", "boss track follows the intro sting")
 	main.show_title()
 	await _frames(2)
+
+
+# --- key settings / armor swap (phase 7) ------------------------------------------------
+
+const InputSetup = preload("res://scripts/core/input_setup.gd")
+
+
+func _check_keys() -> void:
+	Game.settings = Game.default_settings()
+	Game.apply_settings()
+	_check(InputSetup.key_of("jump") == KEY_Z, "jump starts on Z")
+	main.assign_key("jump", KEY_K)
+	_check(InputSetup.key_of("jump") == KEY_K, "jump rebound to K")
+	var dash_keys := InputMap.action_get_events("dash").filter(func(e): return e is InputEventKey).map(func(e): return e.physical_keycode)
+	_check(dash_keys == [KEY_Z], "dash (which used K) takes jump's old key Z")
+	main.show_keys(main.show_title)
+	await _frames(2)
+	_check(main._menu.title == "KEYS" and main._menu.items[4].text.contains("K"), "key page shows the new key")
+	Game.set_setting("keys", {})
+	_check(InputSetup.key_of("jump") == KEY_Z and InputSetup.key_label("dash").contains("Shift"), "reset restores the default keys")
+	main.show_title()
+	await _frames(2)
+
+
+func _check_armor_swap() -> void:
+	Game.new_game()
+	Game.unlock_all()
+	Game.data["presets"] = [{"head": "vanguard", "body": "vanguard", "arm": "vanguard", "leg": "vanguard"}, null, null]
+	main.start_stage("training")
+	await _frames(5)
+	main.player.core = 100.0
+	_check(main._try_armor_swap() and Game.loadout().head == "vanguard", "armor swap loads the saved preset in battle")
+	_check(is_equal_approx(main.player.core, 100.0 - main.SWAP_COST), "armor swap costs core gauge")
+	Game.data["presets"][1] = {"head": "aero", "body": "aero", "arm": "aero", "leg": "aero"}
+	main.player.core = 100.0
+	_check(not main._try_armor_swap(), "armor swap has a cooldown")
+	main._swap_cd = 0.0
+	_check(main._try_armor_swap() and Game.loadout().leg == "aero", "after the cooldown the next preset loads")
+	main._swap_cd = 0.0
+	main.player.core = 0.0
+	_check(not main._try_armor_swap(), "no swap without core gauge")
+	Game.new_game()
+	main.show_title()
+	await _frames(2)
+
+
+func _check_gallery() -> void:
+	Game.new_game()
+	Game.unlock("vanguard_head")
+	Game.mark_cleared("prism_gecko")
+	main.show_gallery()
+	await _frames(3)
+	var m = main._menu
+	_check(m.title == "GALLERY" and m.items.size() == 9 and m.layout == "split", "gallery armor tab: 8 parts + ultimate")
+	_check(m.items[0].text == "VANGUARD HEAD" and m.items[1].text.begins_with("???"), "unlocked part named, locked part hidden")
+	_check(main._capsule_stage("vanguard_head") == "PRISM GECKO" and main._capsule_stage("aero_leg") == "GRAVITY ALBATROSS",
+			"capsule hints name the right stages")
+	m.adjusted.emit("x", 1)
+	await _frames(3)
+	m = main._menu
+	var names: Array = m.items.map(func(it): return it.text)
+	_check(m.items.size() == 9 and names.has("PRISM GECKO") and names.count("???") == 6 and names.count("◈ ???") == 2,
+			"bosses tab: 7 bosses + 2 hidden, only defeated ones named")
+	m.adjusted.emit("x", 1)
+	await _frames(3)
+	_check(main._menu.items.size() == 7 and main._menu.items[0].text.contains("1 /"), "records tab counts progress")
+	main._menu.cancelled.emit()
+	await _frames(2)
+	_check(main._menu != null and main._menu.title == "REBIRTH PROTOCOL", "Esc leaves the gallery to the title")
+	Game.new_game()
 
 
 # --- performance ------------------------------------------------------------------------
