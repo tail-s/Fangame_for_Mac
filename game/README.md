@@ -149,7 +149,7 @@ godot --path game -- --portraits=$(pwd)/game/art/portraits
 | HEAT MIRAGE | 솔라 페넥 | 바닥을 달리는 열파, 관통 |
 | FREEZE LANCE | 크라이오 나왈 | 관통 창, 적을 2.5초 동결 |
 | CORE DRILL | 테라 팽골린 | 근거리 드릴, 다단 히트, 균열벽 파괴 |
-| PULSE RING | 펄스 시카다 | IX 주변으로 퍼지는 고리, 적 탄 제거. **프리즘 게코의 약점**(2.5배 + 패턴 중단, 2.5초 쿨다운) |
+| PULSE RING | 펄스 시카다 | IX 주변으로 퍼지는 고리, 적 탄 제거. **프리즘 게코의 약점**(1.5배 + 패턴 중단, 2.5초 쿨다운) |
 
 ## 아머 시스템 (GDD v0.2 §4)
 
@@ -233,6 +233,12 @@ godot --headless --fixed-fps 60 --path game -- --perfcheck
 ```
 
 `--flowcheck` (44개): 조건부 타일, `cleared:` 조건, 옵션 메뉴 입력·저장 값, 스테이지 선택 스크롤과 ▲ / ◈ 표시, READY·난이도·화면 흔들림, 일시정지 옵션, 보스 음악 전환. `--perfcheck`: 스테이지마다 10초 동안 달리고 쏘며 프레임 비용을 잽니다(헤드리스는 그리기 비용 제외, 창 모드에서는 그리기 호출 수도 표시).
+
+보스 밸런스 측정 (`tools/balance_report.gd`): 보스 9종을 단순한 봇(시드 고정, 위협의 70%만 회피)으로 탭 연사 · 풀차지 · 약점 무기로 싸워 TTK, 분당 받는 피해, 맞은 공격, 피격 가능 비율을 표로 냅니다(약 30초). 결과와 조정 내역은 [`docs/balance.md`](docs/balance.md).
+
+```bash
+godot --headless --fixed-fps 60 --path game -s res://tools/balance_report.gd -- --out=/abs/report.md
+```
 
 스크린샷:
 

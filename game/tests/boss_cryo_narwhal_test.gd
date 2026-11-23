@@ -190,8 +190,8 @@ func test_fight() -> void:
 	b.position = lv.boss_spawn
 	b.player = p
 	lv.add_child(b)
-	_check(b.boss_name == "CRYO NARWHAL" and b.get_max_hp() == 32 and b.weakness == "heat_mirage"
-			and b.contact_damage in [2, 3], "boss tunables: name, 32 HP, Heat Mirage weakness, contact damage")
+	_check(b.boss_name == "CRYO NARWHAL" and b.get_max_hp() == 48 and b.weakness == "heat_mirage"
+			and b.contact_damage in [2, 3], "boss tunables: name, 48 HP, Heat Mirage weakness, contact damage")
 	var states := {}
 	var patterns := {}
 	var p2_patterns := {}
@@ -217,11 +217,11 @@ func test_fight() -> void:
 				seen.pillar = true
 		if i == 360:
 			b._invuln = 0.0
-			b.take_damage(17)  # into phase 2
+			b.take_damage(25)  # 48 -> 23: into phase 2
 	_check(patterns.size() >= 3, "boss uses >= 3 attack patterns (%s)" % str(patterns.keys()))
 	_check(states.size() >= 10, "boss visits many pattern states (%d)" % states.size())
 	_check(inside, "boss stays inside its arena")
-	_check(b.phase2, "boss enters phase 2 after 17 damage (hp %d)" % b.hp)
+	_check(b.phase2, "boss enters phase 2 after 25 damage (hp %d)" % b.hp)
 	_check(p2_patterns.has("wave") and seen.pillar, "phase 2 opens with the glacier wave (ice pillars)")
 	_check(seen.shard == patterns.has("breath") and seen.icicle == patterns.has("rain"),
 			"attacks fire their projectiles (%s)" % str(seen))

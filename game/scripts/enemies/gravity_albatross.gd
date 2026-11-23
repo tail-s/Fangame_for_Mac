@@ -67,6 +67,7 @@ func _init() -> void:
 	boss_name = "GRAVITY ALBATROSS"
 	max_hp = 32
 	weakness = "refraction_beam"
+	weak_mult = 1.5  # was 2.5 (balance pass, docs/balance.md): cheap Refraction Beam spam killed it in ~4 s
 	contact_damage = 3
 	hit_radius = 13.0
 

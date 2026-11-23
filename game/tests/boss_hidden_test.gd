@@ -85,7 +85,7 @@ func test_eclipse_fight() -> void:
 			inside = false
 		if i == 450:
 			b._invuln = 0.0
-			b.take_damage(21, "test")  # 40 -> 19: phase 2
+			b.take_damage(29, "test")  # 48 -> 19: phase 2
 	var patterns := _names(seen, Eclipse.S, [Eclipse.S.INTRO, Eclipse.S.IDLE])
 	_check(patterns.size() >= 3, "ECLIPSE cycles its patterns (%s)" % ", ".join(patterns))
 	_check(b.phase2, "ECLIPSE enters phase 2 at half HP")

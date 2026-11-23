@@ -131,8 +131,9 @@ var _last := ""
 
 func _init() -> void:
 	boss_name = "SOLAR FENNEC"
-	max_hp = 32
+	max_hp = 48  # was 32 (balance pass, docs/balance.md): always exposed, died in ~9 s
 	weakness = "gravity_wing"
+	weak_mult = 5.0  # was 2.5: one slow Gravity Wing orb at a time was slower than the buster
 	contact_damage = 3
 	hit_radius = 14.0
 	intro_time = 1.4

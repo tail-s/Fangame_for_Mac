@@ -15,7 +15,9 @@ const EnemyShot = preload("res://scripts/combat/enemy_shot.gd")
 const MAX_HP := 32
 ## GDD §5-2 weakness loop: Pulse Ring (Pulse Cicada's weapon) beats Prism Gecko.
 const WEAKNESS := "pulse_ring"
-const WEAK_MULT := 2.5
+## 1.5 (was 2.5; balance pass, docs/balance.md): Pulse Ring hits for 5, not 8, so a full tank (7 rings)
+## only just finishes it instead of killing in 4 hits.
+const WEAK_MULT := 1.5
 const STAGGER_COOLDOWN := 2.5
 const HALF := 9.0  # distance from body centre to the surface it clings to
 const GRAVITY := 900.0

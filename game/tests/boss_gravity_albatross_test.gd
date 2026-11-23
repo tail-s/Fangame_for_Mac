@@ -329,13 +329,13 @@ func test_weakness_and_death() -> void:
 	b._invuln = 0.0
 	var hp0: int = b.hp
 	b.take_damage(3, "refraction_beam")
-	_check(hp0 - b.hp == ceili(3 * 2.5) and b.state == Albatross.S.STAGGER and b.staggers == 1,
-			"Refraction Beam: x2.5 damage (%d) and a stagger" % (hp0 - b.hp))
+	_check(hp0 - b.hp == ceili(3 * b.weak_mult) and b.state == Albatross.S.STAGGER and b.staggers == 1,
+			"Refraction Beam: x%.1f damage (%d) and a stagger" % [b.weak_mult, hp0 - b.hp])
 	b._invuln = 0.0
 	b.state = Albatross.S.FEATHER
 	hp0 = b.hp
 	b.take_damage(3, "refraction_beam")
-	_check(hp0 - b.hp == 8 and b.staggers == 1 and b.state == Albatross.S.FEATHER,
+	_check(hp0 - b.hp == ceili(3 * b.weak_mult) and b.staggers == 1 and b.state == Albatross.S.FEATHER,
 			"weakness stagger respects the cooldown (no stun lock)")
 	for i in 160:
 		p.invuln_timer = 1.0

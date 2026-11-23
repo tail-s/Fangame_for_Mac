@@ -102,7 +102,7 @@ var _decor
 
 func _init() -> void:
 	boss_name = "PULSE CICADA"
-	max_hp = 32
+	max_hp = 48  # was 32 (balance pass, docs/balance.md): died in ~11 s
 	weakness = "core_drill"
 	contact_damage = 3
 	hit_radius = 13.0

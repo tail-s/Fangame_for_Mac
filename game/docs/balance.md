@@ -1,0 +1,311 @@
+# 보스 밸런스 (자동 측정)
+
+사람이 아직 직접 끝까지 플레이해 보지 않아서, 보스전 길이와 난이도를 **봇으로 측정**하고 크게 튀는 값만 고쳤습니다.
+측정 도구는 `tools/balance_report.gd`이고, 아래 표는 모두 그 출력입니다(보스·모드마다 시드 3개).
+
+```bash
+godot --headless --fixed-fps 60 --path game -s res://tools/balance_report.gd -- --out=/abs/report.md
+#   --json=/abs/now.json      요약 수치 저장       --before=/abs/old.json  전/후 비교표 추가
+#   --seeds=N  --only=solar_fennec,arca  --react=1.0(완벽 회피)  --trace-hits=1(맞을 때마다 출력)
+```
+
+## 측정 방법
+
+- 실제 스테이지 파일의 보스 방(메인 6 · 히든 2 · ARCA)에서 실제 보스 스크립트와 플레이어(`player.gd`, 스크립트 입력)로 싸웁니다. 보스 RNG와 봇 RNG를 시드로 고정해 같은 코드면 같은 결과가 나옵니다.
+- 모드: **탭 연사**(정렬됐을 때 초당 7.5회), **풀차지**(1.3 s 모았다가 정렬되면 발사), **약점 무기**(에너지가 떨어지면 풀차지로 마무리).
+- 봇: 보스를 바라보고 56–150 px 거리를 유지, 보스가 점프 높이에 있으면 점프 사격, ARCA 방에서는 발판에 올라감. 낮은 탄·돌진은 점프, 위에서 오는 탄·예고된 기둥·고정된 레이저는 대시로 비킵니다. 단, **위협의 70%에만 반응**합니다(일부러 불완전).
+- 갓 모드 대신 HP 100000: 피격 경직·넉백·1 s 무적이 실제와 같으므로 "분당 받는 피해"는 **보통 난이도 · 뉴트럴 아머 · 기본 HP 16** 플레이어가 받았을 양입니다. *survive* = HP 16으로 버티는 시간.
+- *vulnerable* = 피해가 들어가는 상태(팽골린 말림·땅속, 프래그먼트 껍질 닫힘, ARCA 패널 방어 제외), *in reach* = 그중 바닥·발판에서 버스터(점프 포함)가 닿는 높이.
+- 한계: 봇의 회피는 단순합니다(완벽 반응 `--react=1.0`으로 돌려도 받는 피해가 거의 같음). TTK는 "잘 맞히는 플레이어"의 하한에 가깝고, 받는 피해는 사람보다 많을 가능성이 큽니다.
+
+## 이번에 바꾼 값
+
+| 보스 | 값 | 전 → 후 | 이유 |
+|---|---|---|---|
+| 솔라 페넥 | `max_hp` | 32 → 48 | 늘 바닥에 있어 100% 맞는 보스. 버스터 9 s로 게코(42 s)의 1/4.6, 2페이즈 패턴을 다 보기 전에 끝남. 48은 이미 프래그먼트 Λ · ARCA가 쓰는 최대치라 HUD 게이지 크기도 검증됨. |
+| 솔라 페넥 | `weak_mult` | 2.5 → 5.0 | GRAVITY WING(기본 피해 1, 화면에 1개, 초속 80)이 버스터보다 느렸음(124%). 한 틱 3 → 5로 다른 약점 무기의 1타(5)와 같게. |
+| 크라이오 나왈 | `max_hp` | 32 → 48 | 버스터 11 s. |
+| 펄스 시카다 | `max_hp` | 32 → 48 | 버스터 11 s. |
+| 이클립스 | `max_hp` | 40 → 48 | 히든 보스인데 16 s로 대부분의 메인 보스보다 빨랐음(아래 2번). 프래그먼트 Λ · ARCA와 같은 48. |
+| 프리즘 게코 | `WEAK_MULT` | 2.5 → 1.5 | PULSE RING 1타 8(HP의 25%) → 4발, 5 s(버스터의 11%). 이제 1타 5, 에너지 한 통(7발)으로 딱 잡히는 양 → 18 s(43%). |
+| 그래비티 앨버트로스 | `weak_mult` | 2.5 → 1.5 | REFRACTION BEAM(비용 1, 3발 동시)이 4 s(15%)에 처치 → 11 s(37%). |
+
+그대로 둔 것: 테라 팽골린(15 s, 61%만 노출 — HP 40을 시험했더니 약점 비율만 63%로 밀려나서 되돌림), 프래그먼트 Λ · ARCA(42 s · 31 s), 모든 피해량.
+
+테스트는 숫자 자체를 확인하던 검사만 고쳤습니다: 나왈 · 시카다 "32 HP" → 48, 약점 배율 "×2.5" → `weak_mult` / `WEAK_MULT` 식(게코 · 앨버트로스 · 페넥). 32/40 HP를 전제로 한 2페이즈 진입 피해(17 · 21)는 남는 HP가 같도록 25 · 33 · 29로 바꿨고, 동작 검사(2페이즈 진입, 경직 쿨다운 등)는 그대로입니다.
+
+## 숫자만으로는 못 고친 것 (결정 필요)
+
+1. **버스터 TTK 목표 60–120 s는 숫자 조정으로 닿지 않습니다.** 조정 후에도 13–42 s. 풀차지(4 피해 / 1.3 s)만 맞혀도 늘 노출된 보스는 HP 48에 ~12발이고, 60 s가 되려면 HP 150 이상이 필요합니다. 그런데 HUD 보스 게이지가 HP 1당 2 px(48 HP = 101 px, 화면 높이 216)라 HP를 크게 올릴 수 없습니다. 선택지: (a) 보스 피격 후 무적을 원작처럼 늘리기(지금 `boss_base.gd` / `prism_gecko.gd`의 `_invuln = 0.08` → 0.5 s 안팎이면 탭 연사가 크게 줄지만 풀차지는 그대로), (b) 보스 상대 버스터 피해 하향, (c) 게이지를 비율 표시로 바꾸고 HP 대폭 상향. 모두 설계 변경이라 이번에는 하지 않았습니다.
+2. **이클립스 학습 내성이 탭샷에 걸리지 않음**: `maxi(1, floori(1 × 0.25)) = 1`이라 탭 연사(19 s)가 풀차지(84 s)보다 4배 빠릅니다. 같은 "buster" id인 차지샷만 깎입니다. 최소 1 규칙이나 판정을 바꾸는 코드 변경이 필요합니다.
+3. **받는 피해 목표(버스터 TTK × 1.5 생존)**: 프리즘 게코(23 s / 필요 63 s), 앨버트로스(29 / 43), ARCA(23 / 36, 30% 여유 적용), 프래그먼트 Λ(48 / 49), 솔라 페넥(17 / 19 — HP 상향으로 싸움이 길어져 새로 걸림)이 미달. 주 원인은 각 보스 표의 "Attacks that connected": 게코는 벽 사격 파편 · 달리기 접촉, 앨버트로스는 급강하 접촉(47%), ARCA는 레이저 스윕(50%), 페넥은 솔라 랜스 · 홉 접촉. 봇의 회피가 단순해서 생긴 몫이 커 보여서, 사람 플레이로 확인하기 전에는 피해량을 건드리지 않았습니다.
+4. 솔라 페넥 약점은 77%로 여전히 목표(≤ 60%) 밖입니다. GRAVITY WING은 화면에 1개 · 느린 구체라 상한이 있어, 배율을 더 올리기보다 무기 쪽(개수 · 속도) 조정이 맞습니다.
+5. 프리즘 게코는 이제 PULSE RING 한 통(7 × 5 = 35)으로 빗나감 없이 맞혀야 잡혀서, 측정 3회 모두 에너지가 떨어져 버스터로 마무리했습니다(7–30 s). 의도와 다르면 `WEAK_MULT` 2.0(1타 6)이 대안이고, 측정상 7 s(16%)입니다.
+
+## 조정 전 (원래 값)
+
+| boss | HP | buster TTK (tap / charge) | weakness TTK | weak ÷ buster | dmg taken /min | hits /min | survive (16 HP) | vulnerable | in reach | flags |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| PRISM GECKO | 32 | **42 s** (42 / 49) | 5 s | 11% | 42.5 | 19.0 | 23 s | 100% | 54% | buster TTK short (<60 s), weakness too strong (<30%), too much damage (survive 23 s < 63 s) |
+| GRAVITY ALBATROSS | 32 | **29 s** (36 / 29) | 4 s | 15% | 33.6 | 14.0 | 29 s | 100% | 73% | buster TTK short (<60 s), weakness too strong (<30%), too much damage (survive 29 s < 43 s) |
+| SOLAR FENNEC | 32 | **9 s** (9 / 12) | 11 s | 124% | 56.9 | 20.6 | 17 s | 100% | 100% | buster TTK short (<60 s), weakness too weak (>60%) |
+| CRYO NARWHAL | 32 | **11 s** (11 / 13) | 4 s | 41% | 12.9 | 6.0 | 75 s | 100% | 93% | buster TTK short (<60 s) |
+| TERRA PANGOLIN | 32 | **15 s** (15 / 21) | 8 s | 56% | 21.5 | 9.9 | 45 s | 61% | 61% | buster TTK short (<60 s) |
+| PULSE CICADA | 32 | **11 s** (11 / 11) | 3 s | 30% | 24.7 | 10.6 | 39 s | 100% | 92% | buster TTK short (<60 s), weakness too strong (<30%) |
+| ECLIPSE | 40 | **16 s** (16 / 62) | — | — | 39.0 | 16.5 | 25 s | 100% | 86% | buster TTK short (<60 s) |
+| FRAGMENT Λ | 48 | **42 s** (42 / 44) | — | — | 19.9 | 8.6 | 48 s | 39% | 36% | buster TTK short (<60 s), too much damage (survive 48 s < 49 s) |
+| ARCA | 48 | **31 s** (66 / 31) | — | — | 42.4 | 17.8 | 23 s | 59% | 59% | buster TTK short (<60 s), too much damage (survive 23 s < 36 s) |
+
+## 조정 후 (현재 값)
+
+Generated by `game/tools/balance_report.gd` (3 seeded runs per boss and mode, bot described in the script header).
+TTK is measured from the end of the boss intro to the killing blow. Damage is what the bot
+took on **normal** difficulty with the neutral armor (real hurt / knockback / i-frames, the
+player just has enough HP not to die). *Survive* = seconds a base-HP (16) player lasts at that rate.
+
+### Summary
+
+Targets: buster TTK 60–120 s (main bosses; hidden / ARCA up to ~30% harder), weakness TTK 30–60% of the buster TTK,
+survive ≥ 1.5× the buster TTK on base HP. *Buster* = the faster of tap spam and full charges.
+
+| boss | HP | buster TTK (tap / charge) | weakness TTK | weak ÷ buster | dmg taken /min | hits /min | survive (16 HP) | vulnerable | in reach | flags |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| PRISM GECKO | 32 | **42 s** (42 / 49) | 18 s | 43% | 42.5 | 19.0 | 23 s | 100% | 54% | buster TTK short (<60 s), too much damage (survive 23 s < 63 s) |
+| GRAVITY ALBATROSS | 32 | **29 s** (36 / 29) | 11 s | 37% | 33.6 | 14.0 | 29 s | 100% | 73% | buster TTK short (<60 s), too much damage (survive 29 s < 43 s) |
+| SOLAR FENNEC | 48 | **13 s** (13 / 17) | 10 s | 77% | 58.1 | 21.6 | 17 s | 100% | 100% | buster TTK short (<60 s), weakness too weak (>60%), too much damage (survive 17 s < 19 s) |
+| CRYO NARWHAL | 48 | **17 s** (18 / 17) | 9 s | 55% | 13.3 | 6.3 | 72 s | 100% | 94% | buster TTK short (<60 s) |
+| TERRA PANGOLIN | 32 | **15 s** (15 / 21) | 8 s | 56% | 21.5 | 9.9 | 45 s | 61% | 61% | buster TTK short (<60 s) |
+| PULSE CICADA | 48 | **15 s** (19 / 15) | 7 s | 49% | 27.8 | 11.8 | 34 s | 100% | 91% | buster TTK short (<60 s) |
+| ECLIPSE | 48 | **19 s** (19 / 84) | — | — | 43.6 | 18.4 | 22 s | 100% | 86% | buster TTK short (<60 s) |
+| FRAGMENT Λ | 48 | **42 s** (42 / 44) | — | — | 19.9 | 8.6 | 48 s | 39% | 36% | buster TTK short (<60 s), too much damage (survive 48 s < 49 s) |
+| ARCA | 48 | **31 s** (66 / 31) | — | — | 42.4 | 17.8 | 23 s | 59% | 59% | buster TTK short (<60 s), too much damage (survive 23 s < 36 s) |
+
+### Before / after tuning
+
+| boss | HP | buster TTK | weakness TTK | weak ÷ buster | dmg taken /min | survive (16 HP) |
+|---|---:|---:|---:|---:|---:|---:|
+| PRISM GECKO | 32 → 32 | 42 s → **42 s** | 5 s → **18 s** | 11% → **43%** | 42.5 → **42.5** | 23 s → **23 s** |
+| GRAVITY ALBATROSS | 32 → 32 | 29 s → **29 s** | 4 s → **11 s** | 15% → **37%** | 33.6 → **33.6** | 29 s → **29 s** |
+| SOLAR FENNEC | 32 → 48 | 9 s → **13 s** | 11 s → **10 s** | 124% → **77%** | 56.9 → **58.1** | 17 s → **17 s** |
+| CRYO NARWHAL | 32 → 48 | 11 s → **17 s** | 4 s → **9 s** | 41% → **55%** | 12.9 → **13.3** | 75 s → **72 s** |
+| TERRA PANGOLIN | 32 → 32 | 15 s → **15 s** | 8 s → **8 s** | 56% → **56%** | 21.5 → **21.5** | 45 s → **45 s** |
+| PULSE CICADA | 32 → 48 | 11 s → **15 s** | 3 s → **7 s** | 30% → **49%** | 24.7 → **27.8** | 39 s → **34 s** |
+| ECLIPSE | 40 → 48 | 16 s → **19 s** | — → **—** | — → **—** | 39.0 → **43.6** | 25 s → **22 s** |
+| FRAGMENT Λ | 48 → 48 | 42 s → **42 s** | — → **—** | — → **—** | 19.9 → **19.9** | 48 s → **48 s** |
+| ARCA | 48 → 48 | 31 s → **31 s** | — → **—** | — → **—** | 42.4 → **42.4** | 23 s → **23 s** |
+
+### Static numbers
+
+- Player HP: base 16 (`Game.BASE_HP`), +2 per HP-up (`main.gd` → `Game.add_hp_bonus(2)`); 13 HP-ups in the stage files → max 42.
+- Player i-frames after a hit: 1.00 s (hurt stun 0.35 s). Neutral armor: no air / dash damage reduction.
+- Damage taken by difficulty (`Game.DIFFICULTY_DAMAGE`): easy ×0.5, normal ×1.0, hard ×1.5 (rounded up, min 1).
+- Buster: tap 1 (max 3 on screen), mid charge 2 (≥0.45 s), full charge 4 (≥1.3 s, pierces on kill). Boss flicker after any hit: 0.08 s.
+- Special weapons (damage, energy cost): REFRACTION BEAM 2 (cost 1/28, max 3); GRAVITY WING 1 (cost 3/28, max 1); HEAT MIRAGE 2 (cost 2/28, max 2); FREEZE LANCE 2 (cost 2/28, max 2); CORE DRILL 1 (cost 2/28, max 2); PULSE RING 3 (cost 4/28, max 1). Weakness hits deal ×weak_mult (rounded up).
+
+| boss | HP | weakness | weak × | stagger cd | contact dmg | hit radius |
+|---|---:|---|---:|---:|---:|---:|
+| PRISM GECKO | 32 | pulse_ring | 1.5 | 2.5 s | 3 | 10 |
+| GRAVITY ALBATROSS | 32 | refraction_beam | 1.5 | 2.5 s | 3 | 13 |
+| SOLAR FENNEC | 48 | gravity_wing | 5.0 | 2.5 s | 3 | 14 |
+| CRYO NARWHAL | 48 | heat_mirage | 2.5 | 2.5 s | 3 | 13 |
+| TERRA PANGOLIN | 32 | freeze_lance | 2.5 | 2.5 s | 3 | 13 |
+| PULSE CICADA | 48 | core_drill | 2.5 | 2.5 s | 3 | 13 |
+| ECLIPSE | 48 | — | — | — | 3 | 11 |
+| FRAGMENT Λ | 48 | — | — | — | 3 | 14 |
+| ARCA | 48 | — | — | — | 3 | 15 |
+
+### PRISM GECKO (prism_gecko, main)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 42 s (38–45) | 41.3 | 18.5 | 100% | 54% |  |
+| buster full charge | 49 s (38–64) | 43.5 | 19.5 | 100% | 53% |  |
+| weakness weapon (pulse_ring) | 18 s (7–30) | 47.9 | 21.2 | 100% | 51% | weapon energy ran out in 3/3 runs (≈7 s in), finished with the charged buster |
+
+Attacks that connected (buster runs, 4.6 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| contact @ RUN | 3 | 15 | 3.28 | 23% |
+| EnemyShot @ WALL_FIRE | 2 | 22 | 4.82 | 23% |
+| EnemyShot @ IDLE | 2 | 15 | 3.28 | 15% |
+| PrismOrb @ DECOY | 2 | 13 | 2.85 | 13% |
+| EnemyShot @ DROP | 2.0 | 9 | 1.97 | 9% |
+| contact @ LEAP | 3 | 4 | 0.88 | 6% |
+| EnemyShot @ RUN | 2.0 | 5 | 1.09 | 5% |
+| contact @ DROP | 3 | 1 | 0.22 | 2% |
+| EnemyShot @ LEAP | 2.0 | 1 | 0.22 | 1% |
+| PrismOrb @ RUN | 2.0 | 1 | 0.22 | 1% |
+| PrismOrb @ IDLE | 2.0 | 1 | 0.22 | 1% |
+
+Also seen, never connected: PrismOrb @ WALL_FIRE (2), contact @ CEILING (3), contact @ CLIMB (3), contact @ DECOY (3), contact @ IDLE (3), contact @ INTRO (3), contact @ WALL_FIRE (3).
+
+### GRAVITY ALBATROSS (gravity_albatross, main)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 36 s (34–38) | 25.9 | 11.3 | 100% | 73% |  |
+| buster full charge | 29 s (23–33) | 43.0 | 17.3 | 100% | 74% |  |
+| weakness weapon (refraction_beam) | 11 s (9–13) | 0.0 | 0.0 | 100% | 67% |  |
+
+Attacks that connected (buster runs, 3.2 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| contact @ SWOOP | 3 | 14 | 4.35 | 39% |
+| EnemyShot @ IDLE | 2 | 19 | 5.90 | 35% |
+| EnemyShot @ FEATHER | 2 | 5 | 1.55 | 9% |
+| contact @ WELL | 3 | 3 | 0.93 | 8% |
+| EnemyShot @ RISE | 2 | 3 | 0.93 | 6% |
+| contact @ FEATHER | 3 | 1 | 0.31 | 3% |
+
+Also seen, never connected: contact @ DIVE (3), contact @ DIVE_AIM (3), contact @ IDLE (3), contact @ RISE (3), contact @ SWOOP_AIM (3).
+
+### SOLAR FENNEC (solar_fennec, main)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 13 s (12–14) | 56.5 | 20.4 | 100% | 100% |  |
+| buster full charge | 17 s (15–18) | 59.3 | 22.5 | 100% | 100% |  |
+| weakness weapon (gravity_wing) | 10 s (8–11) | 26.7 | 10.3 | 100% | 100% |  |
+
+Attacks that connected (buster runs, 1.5 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| DamageZone @ LANCE | 3 | 8 | 5.40 | 28% |
+| contact @ HOP | 3 | 5 | 3.38 | 17% |
+| DamageZone @ VENT | 2 | 7 | 4.73 | 16% |
+| contact @ SKID | 3 | 2 | 1.35 | 7% |
+| contact @ PILLAR_CHARGE | 3 | 2 | 1.35 | 7% |
+| DamageZone @ PILLARS | 3 | 2 | 1.35 | 7% |
+| contact @ IDLE | 3 | 2 | 1.35 | 7% |
+| DamageZone @ SKID | 2.0 | 3 | 2.03 | 7% |
+| contact @ DASH | 3 | 1 | 0.68 | 3% |
+
+Also seen, never connected: DamageZone @ DASH (2), contact @ DASH_WIND (3), contact @ FLARE (3), contact @ LANCE (3), contact @ LANCE_CHARGE (3), contact @ MIRAGE_WIND (3), contact @ PILLARS (3), contact @ VENT (3).
+
+### CRYO NARWHAL (cryo_narwhal, main)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 18 s (17–20) | 14.4 | 6.6 | 100% | 94% |  |
+| buster full charge | 17 s (16–17) | 12.0 | 6.0 | 100% | 94% |  |
+| weakness weapon (heat_mirage) | 9 s (9–9) | 13.2 | 6.6 | 100% | 100% | weapon energy ran out in 3/3 runs (≈6 s in), finished with the charged buster |
+
+Attacks that connected (buster runs, 1.7 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| Shard @ BREATH | 2 | 5 | 2.88 | 43% |
+| Shard @ RECOVER | 2.0 | 3 | 1.73 | 26% |
+| Icicle @ RAIN_FALL | 2 | 2 | 1.15 | 17% |
+| contact @ CHARGE | 3 | 1 | 0.58 | 13% |
+
+Also seen, never connected: IcePillar @ WAVE_RUN (2), contact @ BONK (3), contact @ BREATH (3), contact @ BREATH_WIND (3), contact @ CHARGE_WIND (3), contact @ DIVE (3), contact @ IDLE (3), contact @ RAIN_AIM (3), contact @ RAIN_FALL (3), contact @ RAIN_MARK (3), contact @ RECOVER (3), contact @ ROAR (3), contact @ SWIM (3), contact @ WAVE_AIM (3), contact @ WAVE_LEAP (3), contact @ WAVE_RUN (3), contact @ WAVE_SLAM (3).
+
+### TERRA PANGOLIN (terra_pangolin, main)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 15 s (10–21) | 18.4 | 7.9 | 61% | 61% |  |
+| buster full charge | 21 s (17–25) | 23.8 | 11.4 | 62% | 62% |  |
+| weakness weapon (freeze_lance) | 8 s (5–15) | 25.9 | 11.8 | 67% | 67% | weapon energy ran out in 1/3 runs (≈7 s in), finished with the charged buster |
+
+Attacks that connected (buster runs, 1.8 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| Chunk @ ERUPT | 2 | 9 | 4.97 | 46% |
+| Chunk @ IDLE | 2.0 | 4 | 2.21 | 21% |
+| contact @ ROLL | 3 | 2 | 1.10 | 15% |
+| Chunk @ RECOVER | 2 | 2 | 1.10 | 10% |
+| contact @ ERUPT | 3 | 1 | 0.55 | 8% |
+
+Also seen, never connected: Chunk @ ROCK_WAIT (2), Chunk @ UNCURL (2), contact @ CEIL_HOLD (3), contact @ CURL (3), contact @ DIG (3), contact @ DROP (3), contact @ IDLE (3), contact @ REAR (3), contact @ RECOVER (3), contact @ ROCK_WAIT (3), contact @ TAIL_UP (3), contact @ UNCURL (3), contact @ UNDER (3), contact @ WARN (3).
+
+### PULSE CICADA (pulse_cicada, main)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 19 s (17–21) | 34.9 | 14.8 | 100% | 90% |  |
+| buster full charge | 15 s (13–16) | 18.8 | 8.1 | 100% | 91% |  |
+| weakness weapon (core_drill) | 7 s (7–8) | 35.9 | 13.8 | 100% | 95% | weapon energy ran out in 1/3 runs (≈7 s in), finished with the charged buster |
+
+Attacks that connected (buster runs, 1.7 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| BeatHazard @ STRIKE | 3 | 7 | 4.15 | 45% |
+| BeatHazard @ FLOOR | 2 | 7 | 4.15 | 30% |
+| EnemyShot @ HOP | 2 | 4 | 2.37 | 17% |
+| BeatHazard @ HOP | 2.0 | 1 | 0.59 | 4% |
+| EnemyShot @ RING | 2 | 1 | 0.59 | 4% |
+
+Also seen, never connected: contact @ CLING (3), contact @ FLOOR (3), contact @ HOP (3), contact @ RING (3), contact @ STRIKE (3).
+
+### ECLIPSE (terra_pangolin, hidden)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 19 s (16–20) | 31.3 | 15.1 | 100% | 87% |  |
+| buster full charge | 84 s (82–87) | 46.3 | 19.1 | 100% | 85% |  |
+
+Attacks that connected (buster runs, 5.1 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| BusterShot @ RUN_GUN | 2 | 44 | 8.60 | 40% |
+| BusterShot @ DASH_JUMP | 2 | 20 | 3.91 | 19% |
+| contact @ MIRROR_RUSH | 3 | 11 | 2.15 | 15% |
+| BusterShot @ IDLE | 4 | 7 | 1.37 | 11% |
+| contact @ DASH_JUMP | 3 | 7 | 1.37 | 9% |
+| BusterShot @ WALL_CLIMB | 4 | 4 | 0.78 | 4% |
+| contact @ WALL_CLIMB | 3 | 1 | 0.20 | 1% |
+
+Also seen, never connected: contact @ CHARGE (3), contact @ IDLE (3), contact @ RUN_GUN (3).
+
+### FRAGMENT Λ (gravity_albatross, hidden)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 42 s (37–47) | 19.9 | 8.5 | 39% | 36% |  |
+| buster full charge | 44 s (42–46) | 19.9 | 8.6 | 39% | 35% |  |
+
+Attacks that connected (buster runs, 4.3 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| DamageZone @ LATTICE | 3 | 12 | 2.78 | 42% |
+| ShardShot @ OPEN | 2.0 | 16 | 3.71 | 37% |
+| ShardShot @ INVERSION | 2 | 8 | 1.85 | 19% |
+| ShardShot @ VOLLEY | 2 | 1 | 0.23 | 2% |
+
+Also seen, never connected: ShardShot @ RING (2), contact @ IDLE (3), contact @ INVERSION (3), contact @ LATTICE (3), contact @ OPEN (3), contact @ RING (3), contact @ VOLLEY (3).
+
+### ARCA (final_eden_core, final)
+
+| mode | TTK mean (min–max) | dmg taken /min | hits taken /min | vulnerable | in reach | notes |
+|---|---:|---:|---:|---:|---:|---|
+| buster tap spam | 66 s (62–72) | 45.8 | 19.3 | 56% | 56% |  |
+| buster full charge | 31 s (27–35) | 35.2 | 14.7 | 61% | 61% |  |
+
+Attacks that connected (buster runs, 4.9 min in total):
+
+| attack (source @ boss state) | dmg per hit | hits | hits /min | share of damage |
+|---|---:|---:|---:|---:|
+| Beam @ LASER_FIRE | 3.0 | 32 | 6.55 | 46% |
+| EnemyShot @ RING | 2 | 17 | 3.48 | 16% |
+| EnemyShot @ IDLE | 2.0 | 12 | 2.46 | 12% |
+| EnemyShot @ SPIRAL | 2 | 9 | 1.84 | 9% |
+| Drone @ DRONES | 2 | 7 | 1.43 | 7% |
+| EnemyShot @ FIELD | 2 | 3 | 0.61 | 3% |
+| EnemyShot @ BREAK | 2.0 | 2 | 0.41 | 2% |
+| contact @ DRONES | 3 | 1 | 0.20 | 1% |
+| PanelShard @ SPIRAL | 2.0 | 1 | 0.20 | 1% |
+| Drone @ IDLE | 2.0 | 1 | 0.20 | 1% |
+| EnemyShot @ DRONES | 2.0 | 1 | 0.20 | 1% |
+| Drone @ FIELD | 2.0 | 1 | 0.20 | 1% |
+
+Also seen, never connected: Beam @ LASER_AIM (3), Field @ FIELD (3), PanelShard @ BREAK (2), contact @ BREAK (3), contact @ FIELD (3), contact @ IDLE (3), contact @ LASER_AIM (3), contact @ LASER_FIRE (3), contact @ LASER_LOCK (3), contact @ RING (3), contact @ SPIRAL (3).
+

@@ -575,7 +575,8 @@ func test_boss_weakness() -> void:
 	b._invuln = 0.0
 	var hp0: int = b.hp
 	b.take_damage(3, "pulse_ring")
-	_check(hp0 - b.hp == 8 and b.state == Gecko.S.DROP, "Pulse Ring is Prism Gecko's weakness (x2.5, interrupts)")
+	_check(hp0 - b.hp == ceili(3 * Gecko.WEAK_MULT) and b.state == Gecko.S.DROP,
+			"Pulse Ring is Prism Gecko's weakness (x%.1f, interrupts)" % Gecko.WEAK_MULT)
 	b._invuln = 0.0
 	b.state = Gecko.S.RUN
 	b.take_damage(3, "pulse_ring")

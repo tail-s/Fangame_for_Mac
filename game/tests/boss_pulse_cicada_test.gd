@@ -208,7 +208,7 @@ func test_fight() -> void:
 	var p = _player(lv, Vector2(arena.position.x + 60.0, arena.end.y - 1.0))
 	var b = _spawn_boss(lv, p)
 	_check(b.get_script().get_base_script() == BossBase, "boss extends boss_base.gd")
-	_check(b.get_max_hp() == 32 and b.weakness == "core_drill" and b.boss_name == "PULSE CICADA",
+	_check(b.get_max_hp() == 48 and b.weakness == "core_drill" and b.boss_name == "PULSE CICADA",
 			"boss tunables (hp %d, weakness %s)" % [b.get_max_hp(), b.weakness])
 	_check(b.contact_damage >= 2 and b.contact_damage <= 3, "contact damage 2-3")
 	var seen := {}
@@ -245,7 +245,7 @@ func test_fight() -> void:
 		if i == 540:
 			beat_before = b.beat_len
 			b._invuln = 0.0
-			b.take_damage(17)  # into phase 2
+			b.take_damage(25)  # 48 -> 23: into phase 2
 	var attacks := 0
 	for s in [Cicada.S.RING, Cicada.S.FLOOR, Cicada.S.STRIKE]:
 		if seen.has(s):

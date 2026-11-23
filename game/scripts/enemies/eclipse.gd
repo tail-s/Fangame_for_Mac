@@ -127,7 +127,7 @@ class BusterShot extends "res://scripts/combat/enemy_shot.gd":
 
 func _init() -> void:
 	boss_name = "ECLIPSE"
-	max_hp = 40
+	max_hp = 48  # was 40 (balance pass, docs/balance.md): tap shots skip the adaptation, died in ~16 s
 	weakness = ""
 	contact_damage = 3
 	hit_radius = 11.0

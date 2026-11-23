@@ -129,7 +129,7 @@ func test_fight() -> void:
 			inside = false
 		if i == 420:
 			b._invuln = 0.0
-			b.take_damage(17)  # 32 -> 15: phase 2
+			b.take_damage(33)  # 48 -> 15: phase 2
 			phase2_ok = b.phase2 and b.state == Fennec.S.FLARE
 	var attack_states := 0
 	for st in [Fennec.S.DASH, Fennec.S.MIRAGE_WIND, Fennec.S.PILLARS, Fennec.S.LANCE]:
@@ -319,14 +319,15 @@ func test_weakness() -> void:
 	hp0 = b.hp
 	b.take_damage(2, "gravity_wing")
 	var since := 0
-	_check(hp0 - b.hp == ceili(2 * 2.5), "Gravity Wing deals x2.5 (%d)" % (hp0 - b.hp))
+	_check(hp0 - b.hp == ceili(2 * b.weak_mult), "Gravity Wing deals x%.1f (%d)" % [b.weak_mult, hp0 - b.hp])
 	_check(b.state == Fennec.S.STAGGER and b.stagger_count == 1 and b.pattern == "",
 			"Gravity Wing interrupts the pattern into a stagger")
 	_check(b._pillars.is_empty() and b._zones.is_empty(), "stagger clears the boss's hazards")
 	b._invuln = 0.0
 	hp0 = b.hp
 	b.take_damage(1, "gravity_wing")
-	_check(hp0 - b.hp == 3 and b.stagger_count == 1, "second weakness hit: damage but no new stagger (cooldown)")
+	_check(hp0 - b.hp == ceili(1 * b.weak_mult) and b.stagger_count == 1,
+			"second weakness hit: damage but no new stagger (cooldown)")
 	var lifted := false
 	var recovered := false
 	for i in 120:
