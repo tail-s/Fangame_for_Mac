@@ -6,6 +6,10 @@ const Autoloads = preload("res://scripts/core/autoloads.gd")
 signal reached(pos: Vector2)
 
 const Layers = preload("res://scripts/core/layers.gd")
+## Beacon sprite (tools/bake_devices.gd): frame 0 unlit, 1-4 lit (LED chase).
+const TEX = preload("res://art/devices/checkpoint.png")
+const FRAME := Vector2(18, 46)
+const LENS := Vector2(0, -36)
 
 var active := false
 var _t := 0.0
@@ -47,9 +51,12 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(-1, -30, 2, 30), Color("497593"))
-	draw_rect(Rect2(-4, -2, 8, 2), Color("497593"))
-	var c := Color("00b8be") if active else Color("2a3550")
+	var frame := 0
 	if active:
-		draw_circle(Vector2(0, -31.5), 5.0 + sin(_t * 6.0) * 1.5, Color(c, 0.25))
-	draw_rect(Rect2(-3, -34, 6, 5), c)
+		# Lens light stepping in and out with the pulse (whole-pixel radii).
+		var r := 7.0 + roundf(sin(_t * 6.0) * 1.5)
+		draw_circle(LENS, r, Color(0.0, 0.72, 0.75, 0.14))
+		draw_circle(LENS, r - 3.0, Color(0.0, 0.72, 0.75, 0.18))
+		frame = 1 + int(_t * 8.0) % 4
+	draw_texture_rect_region(TEX, Rect2(-FRAME.x / 2.0, -FRAME.y, FRAME.x, FRAME.y),
+			Rect2(frame * FRAME.x, 0, FRAME.x, FRAME.y))

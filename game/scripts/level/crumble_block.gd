@@ -7,6 +7,10 @@ const Autoloads = preload("res://scripts/core/autoloads.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 const SHAKE := 0.5
 const RESPAWN := 4.0
+## Slab pieces (tools/bake_devices.gd): column = single / left / middle / right,
+## row = crack stage.
+const TEX = preload("res://art/devices/crumble.png")
+const TILE := 16.0
 
 var rect := Rect2()
 var _timer := -1.0  # < 0 idle, counting down while shaking
@@ -61,13 +65,31 @@ func _player_inside() -> bool:
 
 func _draw() -> void:
 	if _gone > 0.0:
-		draw_rect(rect, Color("9fc274", 0.15), false, 1.0)
+		# Dashed ghost where the slab will return.
+		var col := Color("9fc274", 0.18)
+		var x := rect.position.x
+		while x < rect.end.x:
+			draw_rect(Rect2(x, rect.position.y, 3.0, 1.0), col)
+			draw_rect(Rect2(x, rect.end.y - 1.0, 3.0, 1.0), col)
+			x += 5.0
+		draw_rect(Rect2(rect.position.x, rect.position.y, 1.0, rect.size.y), col)
+		draw_rect(Rect2(rect.end.x - 1.0, rect.position.y, 1.0, rect.size.y), col)
 		return
-	var shake := Vector2(sin(_t * 70.0) * 1.0, 0) if _timer >= 0.0 else Vector2.ZERO
-	var r := Rect2(rect.position + shake, rect.size)
-	draw_rect(r, Color("4a5a3a"))
-	var x := r.position.x
-	while x < r.end.x:
-		draw_line(Vector2(x + 3, r.position.y + 3), Vector2(x + 9, r.position.y + 12), Color("2a3550"), 1.0)
-		x += 16.0
-	draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color("9fc274"))
+	var shaking := _timer >= 0.0
+	# Whole-pixel shake; cracks spread over the shake (stage 1, then 2).
+	var shake := Vector2(roundf(sin(_t * 70.0)), 0.0) if shaking else Vector2.ZERO
+	var stage := 0
+	if shaking:
+		stage = 1 if _timer > SHAKE * 0.5 else 2
+	var n := int(rect.size.x / TILE)
+	for i in n:
+		var piece := 0 if n == 1 else (1 if i == 0 else (3 if i == n - 1 else 2))
+		draw_texture_rect_region(TEX, Rect2(rect.position + shake + Vector2(i * TILE, 0), Vector2(TILE, TILE)),
+				Rect2(piece * TILE, stage * TILE, TILE, TILE))
+	if shaking:
+		# Grit trickling out of the underside.
+		var fall := (SHAKE - _timer) * 40.0
+		for k in n * 2:
+			var gx := rect.position.x + float((k * 7 + 3) % int(rect.size.x))
+			var gy := rect.end.y + floorf(fmod(fall + k * 3.0, 9.0))
+			draw_rect(Rect2(gx, gy, 1.0 + float(k % 2), 1.0), Color("6b7d52") if k % 3 else Color("9fc274"))

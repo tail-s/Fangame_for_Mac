@@ -547,6 +547,13 @@ func _rect_shape(rect: Rect2) -> CollisionShape2D:
 
 # --- drawing ----------------------------------------------------------------------
 
+## Stage-device sprites for the cells drawn below (tools/bake_devices.gd). Held as
+## constants: a texture loaded inside _draw would be freed while still on screen.
+const SPIKES_TEX = preload("res://art/devices/spikes.png")
+const MIRROR_TEX = preload("res://art/devices/mirror.png")
+const GATE_TEX = preload("res://art/devices/gate.png")
+const DOOR_TEX = preload("res://art/devices/door.png")
+
 ## Draws the tiles of `r` onto `ci` (called from LevelChunk._draw).
 func draw_cells(ci: CanvasItem, r: Rect2i) -> void:
 	_ci = ci
@@ -572,14 +579,30 @@ func draw_cells(ci: CanvasItem, r: Rect2i) -> void:
 				"~":
 					_draw_water(x, y, pos)
 				"z":
+					# Low gravity: sparse violet motes (a small star or a dot).
 					if (x + y) % 3 == 0:
-						_ci.draw_rect(Rect2(pos + Vector2(7, 7), Vector2(2, 2)), Color("b78af3", 0.35))
+						var hz := absi((x * 73856093) ^ (y * 19349663))
+						var mp := pos + Vector2(4 + hz % 8, 4 + (hz >> 3) % 8)
+						if hz % 2 == 0:
+							_ci.draw_rect(Rect2(mp - Vector2(1, 0), Vector2(3, 1)), Color("b78af3", 0.3))
+							_ci.draw_rect(Rect2(mp - Vector2(0, 1), Vector2(1, 3)), Color("b78af3", 0.3))
+							_ci.draw_rect(Rect2(mp, Vector2(1, 1)), Color("e2d4ff", 0.6))
+						else:
+							_ci.draw_rect(Rect2(mp, Vector2(1, 1)), Color("b78af3", 0.5))
+							_ci.draw_rect(Rect2(mp + Vector2(0, 2), Vector2(1, 2)), Color("b78af3", 0.18))
 				"|":
-					_ci.draw_rect(Rect2(pos + Vector2(3, 0), Vector2(10, TILE)), Color("71dedf", 0.22))
-					_ci.draw_rect(Rect2(pos + Vector2(4, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
-					_ci.draw_rect(Rect2(pos + Vector2(11, 0), Vector2(1, TILE)), Color("71dedf", 0.5))
-					_ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(5, 10 - (y % 2) * 5),
-							pos + Vector2(8, 6 - (y % 2) * 5), pos + Vector2(11, 10 - (y % 2) * 5)]), Color("d7edf3", 0.7))
+					# Updraft: light column between two rails, upward chevrons.
+					var lift := Color("71dedf")
+					_ci.draw_rect(Rect2(pos + Vector2(4, 0), Vector2(8, TILE)), Color(lift, 0.14))
+					for rx in [3, 12]:
+						_ci.draw_rect(Rect2(pos + Vector2(rx, 0), Vector2(1, TILE)), Color(lift, 0.45))
+						_ci.draw_rect(Rect2(pos + Vector2(rx, 6), Vector2(1, 3)), Color("d7edf3", 0.6))
+					for chev in [[3.0, 0.7], [10.0, 0.3]]:
+						var cy: float = chev[0]
+						for k in 4:
+							_ci.draw_rect(Rect2(pos + Vector2(7 - k, cy + k), Vector2(1, 2)), Color("d7edf3", chev[1]))
+							_ci.draw_rect(Rect2(pos + Vector2(8 + k, cy + k), Vector2(1, 2)), Color("d7edf3", chev[1]))
+					_ci.draw_rect(Rect2(pos + Vector2(7, 2), Vector2(2, 1)), Color(1, 1, 1, 0.75))
 
 
 ## Arena doors (the tiles themselves are drawn by the chunks).
@@ -590,13 +613,24 @@ func _draw() -> void:
 			continue
 		var r: Rect2 = a.door_rect
 		if a.closed:
-			draw_rect(r, Color("2a3550"))
-			var yy := r.position.y + 3.0
-			while yy < r.end.y:
-				draw_rect(Rect2(r.position.x + 2, yy, r.size.x - 4, 2), Color("e34f5b"))
-				yy += 8.0
+			# Blast shutter (DOOR_TEX cells: single / top / middle / bottom).
+			var n := int(r.size.y / TILE)
+			for cx in range(int(r.position.x), int(r.end.x), TILE):
+				for i in n:
+					var piece := 0 if n == 1 else (1 if i == 0 else (3 if i == n - 1 else 2))
+					draw_texture_rect_region(DOOR_TEX, Rect2(cx, r.position.y + i * TILE, TILE, TILE),
+							Rect2(piece * TILE, 0, TILE, TILE))
 		else:
-			draw_rect(Rect2(r.position.x + 6, r.position.y, 4, r.size.y), Color("497593", 0.4))
+			# Open: the shutter's guide rails, faint, with ticks every half tile.
+			var rail := Color("497593", 0.4)
+			draw_rect(Rect2(r.position.x + 1, r.position.y, 1, r.size.y), rail)
+			draw_rect(Rect2(r.end.x - 2, r.position.y, 1, r.size.y), rail)
+			draw_rect(Rect2(r.position.x + 1, r.position.y, r.size.x - 2, 2), Color("497593", 0.5))
+			var yy := r.position.y + 4.0
+			while yy < r.end.y:
+				draw_rect(Rect2(r.position.x + 2, yy, 2, 1), rail)
+				draw_rect(Rect2(r.end.x - 4, yy, 2, 1), rail)
+				yy += 8.0
 
 
 func _draw_solid(x: int, y: int, pos: Vector2) -> void:
@@ -653,15 +687,39 @@ func _draw_ice(x: int, y: int, pos: Vector2) -> void:
 func _draw_water(x: int, y: int, pos: Vector2) -> void:
 	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color(0.2, 0.5, 0.85, 0.28))
 	if cell(x, y - 1) != "~":
-		_ci.draw_rect(Rect2(pos, Vector2(TILE, 1)), Color(0.7, 0.9, 1.0, 0.7))
+		# Surface: bright rim with wave crests and troughs, a lit band under it.
+		_ci.draw_rect(Rect2(pos, Vector2(TILE, 1)), Color(0.7, 0.9, 1.0, 0.6))
+		_ci.draw_rect(Rect2(pos + Vector2(0, 1), Vector2(TILE, 1)), Color(0.55, 0.8, 1.0, 0.25))
+		for k in 4:
+			var wave := (x * 4 + k) % 5
+			if wave == 0:
+				_ci.draw_rect(Rect2(pos + Vector2(k * 4, 0), Vector2(3, 1)), Color(0.93, 0.99, 1.0, 0.9))
+			elif wave == 3:
+				_ci.draw_rect(Rect2(pos + Vector2(k * 4 + 1, 1), Vector2(2, 1)), Color(0.85, 0.95, 1.0, 0.45))
+	else:
+		# Deep water: an occasional caustic glint.
+		var hw := absi((x * 73856093) ^ (y * 19349663))
+		if hw % 3 == 0:
+			_ci.draw_rect(Rect2(pos + Vector2(2 + hw % 10, 3 + (hw >> 4) % 10), Vector2(3, 1)), Color(0.6, 0.85, 1.0, 0.18))
 
 
 ## Fake tiles look like solid ground unless Vanguard HEAD reveals them.
 func _draw_fake(x: int, y: int, pos: Vector2) -> void:
 	if reveal:
-		_ci.draw_rect(Rect2(pos + Vector2(1, 1), Vector2(TILE - 2, TILE - 2)), Color("f0b84a", 0.7), false, 1.0)
-		_ci.draw_line(pos + Vector2(4, 4), pos + Vector2(12, 12), Color("f0b84a", 0.5), 1.0)
-		_ci.draw_line(pos + Vector2(12, 4), pos + Vector2(4, 12), Color("f0b84a", 0.5), 1.0)
+		# Scanned void: faint gold fill, dashed frame, solid corner brackets, a pixel X.
+		var g := Color("f0b84a")
+		_ci.draw_rect(Rect2(pos + Vector2(1, 1), Vector2(TILE - 2, TILE - 2)), Color(g, 0.08))
+		for i in range(4, 12, 4):
+			_ci.draw_rect(Rect2(pos + Vector2(i, 1), Vector2(2, 1)), Color(g, 0.6))
+			_ci.draw_rect(Rect2(pos + Vector2(i, 14), Vector2(2, 1)), Color(g, 0.6))
+			_ci.draw_rect(Rect2(pos + Vector2(1, i), Vector2(1, 2)), Color(g, 0.6))
+			_ci.draw_rect(Rect2(pos + Vector2(14, i), Vector2(1, 2)), Color(g, 0.6))
+		for c in [Vector2(1, 1), Vector2(12, 1), Vector2(1, 12), Vector2(12, 12)]:
+			_ci.draw_rect(Rect2(pos + Vector2(c.x, 1.0 if c.y < 8 else 14.0), Vector2(3, 1)), Color(g, 0.9))
+			_ci.draw_rect(Rect2(pos + Vector2(1.0 if c.x < 8 else 14.0, c.y), Vector2(1, 3)), Color(g, 0.9))
+		for i in 6:
+			_ci.draw_rect(Rect2(pos + Vector2(5 + i, 5 + i), Vector2(1, 1)), Color(g, 0.55))
+			_ci.draw_rect(Rect2(pos + Vector2(10 - i, 5 + i), Vector2(1, 1)), Color(g, 0.55))
 	else:
 		_draw_solid(x, y, pos)
 
@@ -673,26 +731,20 @@ func _looks_solid(x: int, y: int) -> bool:
 
 ## Sealed gate: solid until a cross-stage change opens it (see `; @alt`).
 func _draw_gate(x: int, y: int, pos: Vector2) -> void:
-	_ci.draw_rect(Rect2(pos, Vector2(TILE, TILE)), Color("2a2f45"))
-	for i in 3:
-		var bx := pos.x + 1 + i * 5 + (y % 2) * 2
-		_ci.draw_line(Vector2(bx, pos.y + TILE), Vector2(minf(bx + 4, pos.x + TILE), pos.y), Color("efcf5f", 0.55), 2.0)
-	_ci.draw_rect(Rect2(pos + Vector2(0.5, 0.5), Vector2(TILE - 1, TILE - 1)), Color("efcf5f", 0.8), false, 1.0)
-	if cell(x, y - 1) != "g":
-		_ci.draw_rect(Rect2(pos + Vector2(5, 4), Vector2(6, 5)), Color("e34f5b"))
-		_ci.draw_rect(Rect2(pos + Vector2(6, 1), Vector2(4, 4)), Color("e34f5b"), false, 1.0)
+	# Gold posts, shutter slats with a hazard band; the top cell carries the lock.
+	var top := cell(x, y - 1) != "g"
+	var bottom := cell(x, y + 1) != "g"
+	var piece := (0 if bottom else 1) if top else (3 if bottom else 2)
+	_ci.draw_texture_rect_region(GATE_TEX, Rect2(pos, Vector2(TILE, TILE)),
+			Rect2(piece * TILE, 0, TILE, TILE))
 
 
 func _draw_spikes(pos: Vector2) -> void:
-	for i in 2:
-		var bx := pos.x + i * 8
-		_ci.draw_colored_polygon(PackedVector2Array([
-			Vector2(bx, pos.y + TILE), Vector2(bx + 4, pos.y + 6), Vector2(bx + 8, pos.y + TILE)]), C_SPIKE)
-		_ci.draw_rect(Rect2(bx + 3, pos.y + 6, 2, 2), C_SPIKE_TIP)
+	# Two steel spikes with red tips on a bolted base.
+	_ci.draw_texture(SPIKES_TEX, pos)
 
 
 func _draw_mirror(pos: Vector2, slash: bool) -> void:
-	var a := pos + (Vector2(2, TILE - 2) if slash else Vector2(2, 2))
-	var b := pos + (Vector2(TILE - 2, 2) if slash else Vector2(TILE - 2, TILE - 2))
-	_ci.draw_line(a, b, Color("d7edf3"), 3.0)
-	_ci.draw_line(a, b, Color("b78af3"), 1.0)
+	# Reflector plate on the diagonal, clamped at both ends.
+	_ci.draw_texture_rect_region(MIRROR_TEX, Rect2(pos, Vector2(TILE, TILE)),
+			Rect2((0 if slash else 1) * TILE, 0, TILE, TILE))
