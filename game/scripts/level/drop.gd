@@ -4,6 +4,7 @@ extends Area2D
 const Autoloads = preload("res://scripts/core/autoloads.gd")
 
 const Layers = preload("res://scripts/core/layers.gd")
+const PixelArt = preload("res://scripts/fx/pixel_art.gd")
 
 var kind := "hp"
 var life := 7.0
@@ -54,10 +55,46 @@ func _on_body_entered(body: Node) -> void:
 	queue_free()
 
 
+# Drops spawn inside the enemy CanvasGroup, so they are drawn pre-shaded with their
+# own outline. HP: teal pill with a white cross. Energy: amber cell with a bolt.
+const PAL := {
+	"o": Color("0d1429"), "w": Color("ffffff"), "s": Color("c9dbe6"), "m": Color("7d9bb3"),
+	"t": Color("7cf3ec"), "T": Color("00b8be"), "D": Color("00737e"),
+	"y": Color("ffe5a3"), "Y": Color("f0b84a"), "A": Color("a8651c"),
+}
+const HP_ROWS := [
+	"..oooooo..",
+	".ottTTTTo.",
+	"ottTTwTTDo",
+	"otTTwwwTDo",
+	"oTTTTwTTDo",
+	"oTTTTTTDDo",
+	".oDDDDDDo.",
+	"..oooooo..",
+]
+const ENERGY_ROWS := [
+	"...oooo...",
+	"..osmmmo..",
+	".oyyyYYAo.",
+	".oyYYYwAo.",
+	".oyYYwwAo.",
+	".oywwwwAo.",
+	".oYwwYYAo.",
+	".oYwYYAAo.",
+	"..oAAAAo..",
+	"...oooo...",
+]
+
+
 func _draw() -> void:
 	if life - _t < 2.0 and int(_t * 12.0) % 2 == 0:
 		return
-	var c := Color("00b8be") if kind == "hp" else Color("f0b84a")
-	draw_rect(Rect2(-4, -9, 8, 8), Color("2a3550"))
-	draw_rect(Rect2(-3, -8, 6, 6), c)
-	draw_rect(Rect2(-1, -7, 2, 4), Color.WHITE)
+	var hp := kind == "hp"
+	var tex := PixelArt.cached("drop_hp" if hp else "drop_energy", func() -> Image:
+		return PixelArt.from_rows(HP_ROWS if hp else ENERGY_ROWS, PAL))
+	var at := Vector2(-5, -9) if hp else Vector2(-5, -11)
+	draw_texture(tex, at, Color(1, 1, 1, PixelArt.PRESHADED))
+	# Travelling glint.
+	if int(_t * 3.0) % 3 == 0:
+		var g := int(fmod(_t * 3.0, 1.0) * 4.0)
+		draw_rect(Rect2(at + Vector2(2 + g, 2), Vector2(1, 1)), Color(1, 1, 1, PixelArt.PRESHADED))

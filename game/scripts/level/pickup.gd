@@ -39,21 +39,127 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+# --- drawing ----------------------------------------------------------------------
+# Part capsule: steel caps around an armor-colour glass core with the slot letter,
+# a pulsing halo ring and two orbiting sparkles. HP-up: a squat teal cell with a
+# white cross. Both bob as before; sprites are built once per colour.
+
+const PixelArt = preload("res://scripts/fx/pixel_art.gd")
+const STEEL := {"o": Color("0a1326"), "W": Color("ffffff"), "S": Color("d3e3ec"), "s": Color("8aa7bd"),
+		"d": Color("3f5c7a")}
+const CAPSULE_ROWS := [
+	"...oooooo...",
+	"..oSSSSSso..",
+	".oSWSSSSsso.",
+	".osssssssdo.",
+	"oddddddddddo",
+	"oggggGGGGGho",
+	"ogwgGGGGGGho",
+	"ogwGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGhho",
+	"oGGGGGGGhhho",
+	"oddddddddddo",
+	".osSSSSSsdo.",
+	".osssssssdo.",
+	"..oddddddo..",
+	"...oooooo...",
+]
+const CELL_ROWS := [
+	"..oooooooo..",
+	".oSWSSSSSso.",
+	"oddddddddddo",
+	"ogggggggGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"ogGGGGGGGGho",
+	"oGGGGGGGGhho",
+	"oddddddddddo",
+	".osSSSSSsdo.",
+	"..oooooooo..",
+]
+const HP_TEAL := Color("00b8be")
+
+
 func _draw() -> void:
-	var bob := sin(_t * 3.0) * 1.5
+	var bob := roundf(sin(_t * 3.0) * 1.5)
 	if kind == "hp":
-		var c := Color("00b8be")
-		draw_rect(Rect2(-6, -16 + bob, 12, 14), Color("2a3550"))
-		draw_rect(Rect2(-2, -14 + bob, 4, 10), c)
-		draw_rect(Rect2(-5, -11 + bob, 10, 4), c)
-		draw_rect(Rect2(-6, -17 + bob, 12, 1), Color("d7edf3"))
+		_draw_cell(bob)
 		return
 	var armor := ArmorData.part_armor(part_id)
 	var c: Color = ArmorData.ARMOR_COLOR[armor]
-	var glow := 0.25 + 0.15 * sin(_t * 5.0)
-	draw_circle(Vector2(0, -10 + bob), 11.0, Color(c, glow))
-	draw_rect(Rect2(-6, -18 + bob, 12, 16), Color("2a3550"))
-	draw_rect(Rect2(-4, -16 + bob, 8, 12), c)
+	var mid := Vector2(0, -10 + bob)
+	# Halo: soft disc plus a crisp ring that breathes.
+	var pulse := 0.5 + 0.5 * sin(_t * 5.0)
+	PixelArt.disc(self, mid, 10.0, Color(c, 0.1 + 0.08 * pulse))
+	var rr := 10.0 + roundf(pulse)
+	PixelArt.ring(self, mid, rr - 1.0, rr, Color(c, 0.35 + 0.25 * pulse))
+	var tex := PixelArt.cached("capsule_" + armor, func() -> Image: return _glass_sprite(CAPSULE_ROWS, c))
+	var at := Vector2(-6, -19 + bob)
+	draw_texture(tex, at)
 	var letter: String = ArmorData.SLOT_LABEL[ArmorData.part_slot(part_id)].substr(0, 1)
-	draw_string(ThemeDB.fallback_font, Vector2(-3, -7 + bob), letter,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color("0a1326"))
+	var ink := Color("0a1326") if c.get_luminance() > 0.6 else Color("f4fbff")
+	PixelArt.text(self, at + Vector2(5, 7), letter, ink)
+	_draw_glint(at + Vector2(2, 5), 8)
+	for i in 2:
+		_sparkle(mid + (Vector2.from_angle(_t * 2.2 + i * PI) * Vector2(12, 9)).round(), c)
+
+
+func _draw_cell(bob: float) -> void:
+	var at := Vector2(-6, -15 + bob)
+	var tex := PixelArt.cached("hp_cell", func() -> Image:
+		var img := _glass_sprite(CELL_ROWS, HP_TEAL)
+		# Bold cross with a dark drop shadow (2 px arms).
+		var shade := HP_TEAL.darkened(0.45)
+		for p in _cross(3, 4):
+			img.set_pixel(p.x + 1, p.y + 1, shade)
+		for p in _cross(3, 4):
+			img.set_pixel(p.x, p.y, Color.WHITE)
+		return img)
+	draw_texture(tex, at)
+	_draw_glint(at + Vector2(2, 3), 7)
+	_sparkle(at + (Vector2(6, 7) + Vector2.from_angle(_t * 2.6) * Vector2(10, 9)).round(), HP_TEAL)
+
+
+## Pixels of a 6x6 cross with 2 px arms whose top-left is (x, y).
+static func _cross(x: int, y: int) -> Array:
+	var pts := []
+	for i in 6:
+		for j in 2:
+			pts.append(Vector2i(x + 2 + j, y + i))
+			pts.append(Vector2i(x + i, y + 2 + j))
+	return pts
+
+
+## Steel-capped glass sprite: g / G / h are the glass light / mid / dark tones.
+static func _glass_sprite(rows: Array, c: Color) -> Image:
+	var pal := STEEL.duplicate()
+	pal["g"] = c.lightened(0.45)
+	pal["G"] = c
+	pal["h"] = c.darkened(0.32)
+	pal["w"] = Color("ffffff")
+	return PixelArt.from_rows(rows, pal)
+
+
+## A light band that sweeps down the glass every 1.6 s.
+func _draw_glint(top_left: Vector2, rows: int) -> void:
+	var k := fmod(_t, 1.6) / 0.5
+	if k >= 1.0:
+		return
+	var y := floorf(k * rows)
+	draw_rect(Rect2(top_left + Vector2(0, y), Vector2(3, 1)), Color(1, 1, 1, 0.75))
+
+
+## Four-point twinkle: white centre, coloured arms.
+func _sparkle(p: Vector2, c: Color) -> void:
+	var arm := Color(c.lightened(0.3), 0.85)
+	draw_rect(Rect2(p + Vector2(-1, 0), Vector2(1, 1)), arm)
+	draw_rect(Rect2(p + Vector2(1, 0), Vector2(1, 1)), arm)
+	draw_rect(Rect2(p + Vector2(0, -1), Vector2(1, 1)), arm)
+	draw_rect(Rect2(p + Vector2(0, 1), Vector2(1, 1)), arm)
+	draw_rect(Rect2(p, Vector2(1, 1)), Color.WHITE)

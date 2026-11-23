@@ -2,6 +2,7 @@ extends Area2D
 ## Enemy projectile. The player's hurtbox detects it and calls hit().
 
 const Layers = preload("res://scripts/core/layers.gd")
+const PixelArt = preload("res://scripts/fx/pixel_art.gd")
 
 var velocity := Vector2.ZERO
 var damage := 2
@@ -33,6 +34,20 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 
+# Red energy pellet, 7 px plus its own 1 px outline (it lives in the enemy
+# CanvasGroup and is drawn pre-shaded, so pixel_shade leaves it as drawn).
+# The hot core pulses between white and pink.
+const TONES := [Color("8e1d31"), Color("e34f5b"), Color("ff9c9c"), Color("fff0ee")]
+const OUTLINE := Color("0d1429")
+
+
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, 3.5, Color("e34f5b"))
-	draw_circle(Vector2.ZERO, 1.5, Color("ffd6d6"))
+	var pulse := int(life * 16.0) % 2
+	var tex := PixelArt.cached("enemy_shot%d" % pulse, func() -> Image:
+		var img := PixelArt.blank(9, 9)
+		var tones: Array = TONES.duplicate()
+		if pulse == 1:
+			tones[3] = tones[2]
+		PixelArt.glow_ellipse(img, Vector2(4.5, 4.5), Vector2(3.6, 3.6), tones)
+		return PixelArt.outline(img, OUTLINE))
+	draw_texture(tex, Vector2(-4, -4), Color(1, 1, 1, PixelArt.PRESHADED))

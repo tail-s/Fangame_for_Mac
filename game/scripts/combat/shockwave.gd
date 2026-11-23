@@ -37,9 +37,34 @@ func _on_body_entered(body: Node) -> void:
 		body.take_damage(damage)
 
 
+# Mint energy blade rising off the ground (dark trailing edge, bright leading edge,
+# white crest), a ground streak and kicked-up grit; fades out over its life.
+const MINT := [Color("1d7c84"), Color("3fb8bb"), Color("71dedf"), Color("dcfffb")]
+const GRIT := Color("8aa7bd")
+
+
 func _draw() -> void:
 	var a := 1.0 - _t / life
-	var h := 18.0 * (0.6 + 0.4 * sin(_t * 40.0))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-7 * dir, 0), Vector2(5 * dir, -h), Vector2(8 * dir, 0)]), Color(0.44, 0.87, 0.87, a))
-	draw_line(Vector2(-10 * dir, -1), Vector2(8 * dir, -1), Color(1, 1, 1, a), 2.0)
+	var h := roundf(18.0 * (0.6 + 0.4 * sin(_t * 40.0)))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(dir, 1))
+	draw_rect(Rect2(-10, -2, 18, 1), Color(MINT[3], a))
+	draw_rect(Rect2(-9, -1, 16, 1), Color(MINT[1], a * 0.8))
+	for r in int(h):
+		var t := r / h
+		var l := roundf(-7.0 + 11.0 * t)
+		var f := maxf(roundf(8.0 - 3.0 * t * t), l + 1.0)
+		var y := -3.0 - r
+		if t > 0.82:
+			draw_rect(Rect2(l, y, f - l, 1), Color(MINT[3], a))
+			continue
+		var w := f - l
+		var back := minf(2.0, floorf(w / 3.0))
+		var lead := minf(2.0, w - back)
+		draw_rect(Rect2(l, y, back, 1), Color(MINT[0], a))
+		draw_rect(Rect2(l + back, y, w - back - lead, 1), Color(MINT[1] if t < 0.45 else MINT[2], a))
+		draw_rect(Rect2(f - lead, y, lead, 1), Color(MINT[3] if r % 3 == 0 else MINT[2], a))
+	for i in 3:
+		var k := fmod(_t / life * 1.6 + i * 0.3, 1.0)
+		var p := Vector2(-5.0 - i * 3.0 - k * 6.0, -2.0 - sin(k * PI) * (7.0 + i * 3.0)).round()
+		draw_rect(Rect2(p, Vector2(2, 2) if i == 0 else Vector2.ONE), Color(GRIT, a))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
