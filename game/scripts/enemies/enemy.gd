@@ -53,6 +53,7 @@ func take_damage(amount: int, _weapon := "") -> bool:
 	flash = 0.08
 	queue_redraw()
 	if hp <= 0:
+		get_tree().call_group("shaker", "hitstop", 0.035)
 		_die()
 		return true
 	Autoloads.sfx("enemy_hit")

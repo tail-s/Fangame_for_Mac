@@ -33,6 +33,8 @@ func _run() -> void:
 		await _check_keys()
 		await _check_armor_swap()
 		await _check_gallery()
+		await _check_records()
+		await _check_feel()
 	print("%d passed, %d failed" % [_pass, _fail])
 	get_tree().quit(1 if _fail > 0 else 0)
 
@@ -110,7 +112,7 @@ func _check_options() -> void:
 	_check(Audio.current_track == "title", "title music starts")
 	main.show_options(main.show_title)
 	await _frames(3)
-	_check(main._menu.items.size() == 9 and main._menu._compact(), "options menu: 9 rows, compact layout")
+	_check(main._menu.items.size() == 10 and main._menu._compact(), "options menu: 10 rows, compact layout")
 	main._on_option_adjust("music", -1)
 	main._on_option_adjust("difficulty", 1)
 	main._on_option_adjust("shake", 1)
@@ -322,11 +324,52 @@ func _check_gallery() -> void:
 			"bosses tab: 7 bosses + 2 hidden, only defeated ones named")
 	m.adjusted.emit("x", 1)
 	await _frames(3)
-	_check(main._menu.items.size() == 7 and main._menu.items[0].text.contains("1 /"), "records tab counts progress")
+	_check(main._menu.items.size() == 8 and main._menu.items[0].text.contains("1 /"), "records tab counts progress")
 	main._menu.cancelled.emit()
 	await _frames(2)
 	_check(main._menu != null and main._menu.title == "REBIRTH PROTOCOL", "Esc leaves the gallery to the title")
 	Game.new_game()
+
+
+func _check_records() -> void:
+	Game.new_game()
+	main.start_stage("training")
+	await _frames(5)
+	main._stage_time = 42.5
+	main._finish_stage("STAGE CLEAR")
+	var r := Game.record("training")
+	_check(is_equal_approx(r.get("best", 0.0), 42.5) and r.get("nodmg", false), "clear stores best time and no-damage star")
+	_check(main._record_text("training") == "최고 0:42.50  ★", "record text for stage select")
+	_check(not Game.record_clear("training", 50.0, false) and is_equal_approx(Game.record("training").best, 42.5)
+			and Game.record("training").nodmg, "slower clear keeps the best time and the star")
+	_check(Game.record_clear("training", 30.0, false), "faster clear is a new best")
+	await get_tree().create_timer(main.CLEAR_DELAY + 0.3).timeout
+	main.show_title()
+	await _frames(2)
+	Game.new_game()
+
+
+func _check_feel() -> void:
+	Game.new_game()
+	main.start_stage("training")
+	await _frames(5)
+	main.force_hitstop = true
+	main.hitstop(0.08)
+	_check(is_equal_approx(Engine.time_scale, 0.05), "hit-stop slows game time")
+	# Hit-stop is measured in real time; with --fixed-fps frames are much faster.
+	var until := Time.get_ticks_msec() + 200
+	while Time.get_ticks_msec() < until:
+		await get_tree().process_frame
+	await get_tree().process_frame
+	_check(is_equal_approx(Engine.time_scale, 1.0), "hit-stop ends on its own (real time)")
+	main.force_hitstop = false
+	main.player.facing = 1
+	for i in 40:
+		await get_tree().process_frame
+	_check(main._cam.position.x > 4.0, "camera leads ahead of the facing direction")
+	main.show_title()
+	await _frames(2)
+	_check(is_equal_approx(Engine.time_scale, 1.0), "leaving the stage resets the time scale")
 
 
 # --- performance ------------------------------------------------------------------------

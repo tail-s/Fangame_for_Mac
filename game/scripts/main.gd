@@ -52,6 +52,14 @@ var _after_intro := ""
 ## Armor preset swap in battle (GDD §4-1 "전투 중 제한된 교체"): cooldown left.
 var _swap_cd := 0.0
 var _swap_index := -1
+var _hitstop_until := 0
+var _look_x := 0.0
+## Tests only: run hit-stop even in headless / silent runs.
+var force_hitstop := false
+## Challenge records (optional): stage clock and whether any damage was taken.
+var _stage_time := 0.0
+var _timing := false
+var _took_damage := false
 
 
 func _ready() -> void:
@@ -88,14 +96,43 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if Engine.time_scale < 1.0 and Time.get_ticks_msec() >= _hitstop_until:
+		Engine.time_scale = 1.0
 	if _cam == null or not is_instance_valid(_cam):
 		return
+	_look_ahead(delta)
 	if _shake_time > 0.0:
 		_shake_time = maxf(_shake_time - delta, 0.0)
 		var k := _shake_strength * _shake_time / _shake_total
 		_cam.offset = Vector2(randf_range(-k, k), randf_range(-k, k)).round()
 	elif _cam.offset != Vector2.ZERO:
 		_cam.offset = Vector2.ZERO
+
+
+## Hit-stop: game time nearly freezes for `seconds` of real time (heavy hits, boss
+## down, taking damage). Called through the "shaker" group; off in automated runs so
+## their timing stays deterministic.
+func hitstop(seconds: float) -> void:
+	if not force_hitstop and (Game.silent or DisplayServer.get_name() == "headless"):
+		return
+	if get_tree().paused:
+		return
+	var until := Time.get_ticks_msec() + int(seconds * 1000.0)
+	if until <= _hitstop_until and Engine.time_scale < 1.0:
+		return
+	_hitstop_until = until
+	Engine.time_scale = 0.05
+
+
+## Camera leads a little in the facing direction (more while dashing), eased.
+func _look_ahead(delta: float) -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	var want := 0.0
+	if not _in_boss:
+		want = player.facing * (28.0 if player.is_dashing() else (18.0 if absf(player.velocity.x) > 1.0 else 10.0))
+	_look_x = lerpf(_look_x, want, 1.0 - exp(-3.5 * delta))
+	_cam.position.x = roundf(_look_x)
 
 
 ## Screen shake (off when the "shake" option is off). Called through the "shaker" group.
@@ -111,6 +148,10 @@ func _physics_process(delta: float) -> void:
 	if level == null or _menu != null or _lab != null:
 		return
 	_swap_cd = maxf(_swap_cd - delta, 0.0)
+	if _timing:
+		_stage_time += delta
+		if Game.settings.get("timer", false):
+			hud.set_timer(Game.clock(_stage_time))
 	if Input.is_action_just_pressed("armor_swap"):
 		_try_armor_swap()
 	if Input.is_action_just_pressed("pause"):
@@ -155,7 +196,7 @@ func show_title() -> void:
 
 # --- options (GDD §8-2 phase 6: accessibility) --------------------------------------
 
-const OPTION_IDS := ["music", "sfx", "difficulty", "shake", "flashes", "fullscreen"]
+const OPTION_IDS := ["music", "sfx", "difficulty", "shake", "flashes", "fullscreen", "timer"]
 
 
 func show_options(back: Callable) -> void:
@@ -188,6 +229,9 @@ func _option_row(id: String) -> Array:
 					"피격 섬광·번개 등 밝은 깜박임을 줄입니다"]
 		"fullscreen":
 			return ["전체 화면   ◀ %s ▶" % ("켜기" if s.fullscreen else "끄기"), "창 모드 / 전체 화면"]
+		"timer":
+			return ["기록 타이머   ◀ %s ▶" % ("켜기" if s.get("timer", false) else "끄기"),
+					"스테이지 클리어 시간을 화면에 표시합니다 (도전용, 기록은 언제나 저장)"]
 	return [id, ""]
 
 
@@ -205,8 +249,10 @@ func _on_option_adjust(id: String, dir: int) -> void:
 		"difficulty":
 			var i := Game.DIFFICULTIES.find(s.difficulty)
 			Game.set_setting(id, Game.DIFFICULTIES[clampi(i + dir, 0, Game.DIFFICULTIES.size() - 1)])
-		"shake", "flashes", "fullscreen":
-			Game.set_setting(id, not s[id])
+		"shake", "flashes", "fullscreen", "timer":
+			Game.set_setting(id, not s.get(id, false))
+			if id == "timer" and hud != null:
+				hud.set_timer("")
 	var row := _option_row(id)
 	if _menu != null:
 		_menu.update_item(id, row[0], row[1])
@@ -270,6 +316,14 @@ func show_gallery(tab := "armor", selected := 0) -> void:
 	_menu.highlighted.connect(panel.show_index)
 
 
+## "최고 1:23.45 ★" for a stage with a recorded clear ("" otherwise).
+func _record_text(stage_id: String) -> String:
+	var r := Game.record(stage_id)
+	if not r.has("best"):
+		return ""
+	return "최고 %s%s" % [Game.clock(r.best), "  ★" if r.get("nodmg", false) else ""]
+
+
 ## [{id, text, note, entry}] for one gallery tab.
 func _gallery_rows(tab: String) -> Array:
 	var rows := []
@@ -321,11 +375,21 @@ func _gallery_rows(tab: String) -> Array:
 				["weapons", "특수무기  %d / 6" % weapons, weapons / 6.0],
 				["hp", "HP 상한  %d" % Game.max_hp(), clampf((Game.max_hp() - 16) / 16.0, 0.0, 1.0)],
 				["endings", "엔딩  %s" % "  ".join(endings), seen / 3.0],
+				["nodmg", "무피격 클리어 ★  %d / %d" % [_nodmg_count(), stages.size()],
+						float(_nodmg_count()) / maxf(stages.size(), 1)],
 			]
+			for st in stages:
+				var rt := _record_text(st.id)
+				if rt != "":
+					recs.append(["time_" + st.id, "%s  %s" % [st.get("name", st.id), rt], 1.0])
 			for r in recs:
 				rows.append({"id": r[0], "text": r[1], "note": "",
 						"entry": {"kind": "record", "name": "RECORDS", "status": r[1], "value": r[2], "unlocked": true}})
 	return rows
+
+
+func _nodmg_count() -> int:
+	return stages.filter(func(st): return Game.record(st.id).get("nodmg", false)).size()
 
 
 ## Name of the stage whose map holds the capsule for `part` (a real stage before
@@ -525,7 +589,7 @@ func show_select() -> void:
 		panel.entries.append({"kind": "stage", "id": s.id, "name": s.get("name", s.id), "locked": locked,
 				"cleared": Game.is_cleared(s.id), "changed": not locked and not Level.changes_met(s, requirement_met).is_empty(),
 				"signal": "" if sig == "" else ("detected" if sig.contains("감지") else "weak"),
-				"portrait": s.id if s.has("boss") else ""})
+				"portrait": s.id if s.has("boss") else "", "record": _record_text(s.id)})
 	panel.entries.append({"kind": "lab", "id": "lab", "name": "ARMOR LAB", "locked": false, "cleared": false,
 			"changed": false, "signal": "", "portrait": ""})
 	panel.entries.append({"kind": "title", "id": "title", "name": "타이틀로", "locked": false, "cleared": false,
@@ -611,6 +675,7 @@ func _close_lab() -> void:
 
 
 func _open_pause() -> void:
+	Engine.time_scale = 1.0
 	get_tree().paused = true
 	_show_menu("PAUSE", stage.get("name", ""), [
 		{"id": "resume", "text": "계속하기"},
@@ -723,6 +788,9 @@ func start_stage(id: String) -> void:
 			stage = s
 	Game.clear_checkpoint()
 	_close_menu()
+	_stage_time = 0.0
+	_took_damage = false
+	_timing = true
 	load_level()
 
 
@@ -819,6 +887,7 @@ func _flash_ready() -> void:
 func _on_player_hp(hp: int, _max_hp: int) -> void:
 	if _last_hp >= 0 and hp < _last_hp:
 		shake(2.0, 0.18)
+		_took_damage = true
 	_last_hp = hp
 
 
@@ -835,6 +904,8 @@ func at_checkpoint() -> bool:
 
 func _leave_stage() -> void:
 	_generation += 1
+	Engine.time_scale = 1.0
+	_look_x = 0.0
 	get_tree().call_group("backdrop", "set_theme", "")
 	get_tree().paused = false
 	_close_menu()
@@ -1022,6 +1093,11 @@ func _finish_stage(text: String) -> void:
 	_pose("victory")
 	hud.show_message(text)
 	Game.mark_cleared(stage.id)
+	if _timing:
+		_timing = false
+		var best := Game.record_clear(stage.id, _stage_time, not _took_damage)
+		hud.toast("CLEAR %s%s%s" % [Game.clock(_stage_time), "  —  최고 기록!" if best else "",
+				"   ★ 무피격" if not _took_damage else ""], 3.0)
 	Audio.music("stage_clear")
 	await get_tree().create_timer(CLEAR_DELAY).timeout
 	if gen != _generation:

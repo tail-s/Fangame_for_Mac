@@ -390,6 +390,7 @@ func take_damage(amount: int, from_x: float) -> void:
 		scaled *= stats.air_damage_mult
 	scaled *= damage_taken_mult
 	hp = maxi(hp - maxi(1, ceili(scaled)), 0)
+	get_tree().call_group("shaker", "hitstop", 0.07)
 	hp_changed.emit(hp, max_hp)
 	Autoloads.sfx("hurt")
 	if hp == 0:

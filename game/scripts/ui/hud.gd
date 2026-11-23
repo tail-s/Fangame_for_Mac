@@ -64,6 +64,7 @@ var _msg: Label
 var _toast: Label
 var _hint: Label
 var _help: Label
+var _timer: Label
 var _debug: Label
 var _toast_tween: Tween
 var _textures := {}
@@ -82,6 +83,7 @@ func _ready() -> void:
 	_toast = _label(9, Vector2(0, 26), Vector2(384, 30), HORIZONTAL_ALIGNMENT_CENTER)
 	_hint = _label(8, Vector2(0, 186), Vector2(384, 12), HORIZONTAL_ALIGNMENT_CENTER)
 	_help = _label(8, Vector2(6, 202), Vector2(372, 12), HORIZONTAL_ALIGNMENT_LEFT)
+	_timer = _label(8, Vector2(296, 190), Vector2(82, 12), HORIZONTAL_ALIGNMENT_RIGHT)
 	_help.text = help_text()
 	_debug = _label(8, Vector2(236, 4), Vector2(144, 40), HORIZONTAL_ALIGNMENT_LEFT)
 	_debug.visible = false
@@ -402,3 +404,9 @@ static func help_text() -> String:
 			k.call("move_left"), k.call("move_right"), k.call("jump"), k.call("shoot"), k.call("dash"),
 			k.call("special"), k.call("weapon_prev"), k.call("weapon_next"), k.call("tag"), k.call("armor_swap"),
 			k.call("pause")]
+
+
+## Challenge clock (OPTIONS → 기록 타이머); "" hides it.
+func set_timer(text: String) -> void:
+	if _timer != null:
+		_timer.text = text

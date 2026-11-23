@@ -49,7 +49,7 @@ var silent := false
 func default_settings() -> Dictionary:
 	# Music starts off (it startled people at launch); raise it in OPTIONS.
 	return {"music": 0, "sfx": 8, "difficulty": "normal", "shake": true, "flashes": true,
-			"fullscreen": false, "keys": {}}
+			"fullscreen": false, "keys": {}, "timer": false}
 
 
 ## Loads user://settings.cfg (ignoring bad values) and applies it.
@@ -124,6 +124,9 @@ func default_data() -> Dictionary:
 		"ultimate": false,
 		"frame": "parts",
 		"flags": [],
+		# Optional challenge records per stage (GDD §2-3: time pressure only as a
+		# chosen challenge): {"best": seconds, "nodmg": bool}
+		"records": {},
 	}
 
 
@@ -169,6 +172,12 @@ func load_game() -> bool:
 	d["ultimate"] = parsed.get("ultimate", false) == true
 	d["frame"] = "ultimate" if d["ultimate"] and parsed.get("frame") == "ultimate" else "parts"
 	d["hp_bonus"] = clampi(int(parsed.get("hp_bonus", 0)), 0, 32)
+	if typeof(parsed.get("records")) == TYPE_DICTIONARY:
+		for id in parsed["records"]:
+			var r = parsed["records"][id]
+			if typeof(id) == TYPE_STRING and typeof(r) == TYPE_DICTIONARY \
+					and typeof(r.get("best")) in [TYPE_INT, TYPE_FLOAT] and float(r.best) > 0.0:
+				d["records"][id] = {"best": float(r.best), "nodmg": r.get("nodmg", false) == true}
 	data = d
 	if typeof(parsed.get("presets")) == TYPE_ARRAY:
 		for i in mini(PRESET_COUNT, parsed["presets"].size()):
@@ -343,6 +352,28 @@ func mark_cleared(stage_id: String) -> void:
 	if not data["cleared"].has(stage_id):
 		data["cleared"].append(stage_id)
 	save_game()
+
+
+## Stores a stage clear for the challenge records; returns true on a new best time.
+func record_clear(stage_id: String, seconds: float, no_damage: bool) -> bool:
+	var r: Dictionary = data["records"].get(stage_id, {})
+	var new_best: bool = not r.has("best") or seconds < float(r.best)
+	if new_best:
+		r["best"] = snappedf(seconds, 0.01)
+	r["nodmg"] = r.get("nodmg", false) or no_damage
+	data["records"][stage_id] = r
+	save_game()
+	return new_best
+
+
+func record(stage_id: String) -> Dictionary:
+	return data.get("records", {}).get(stage_id, {})
+
+
+## "1:23.45" style clock.
+static func clock(seconds: float) -> String:
+	var t := maxf(seconds, 0.0)
+	return "%d:%05.2f" % [int(t / 60.0), fmod(t, 60.0)]
 
 
 func is_cleared(stage_id: String) -> bool:

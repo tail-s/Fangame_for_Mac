@@ -92,6 +92,8 @@ func take_damage(amount: int, weapon := "") -> bool:
 	if amount <= 0:
 		return false
 	Autoloads.sfx("weak_hit" if weak else "boss_hit")
+	if weak or amount >= 3:
+		get_tree().call_group("shaker", "hitstop", 0.06 if weak else 0.04)
 	hp = maxi(hp - amount, 0)
 	_flash = 0.08
 	_invuln = 0.08
@@ -223,6 +225,7 @@ func clamp_to_arena(margin: float) -> void:
 
 
 func _start_death() -> void:
+	get_tree().call_group("shaker", "hitstop", 0.28)
 	var audio := Autoloads.node("Audio")
 	if audio != null:
 		audio.stop_music()

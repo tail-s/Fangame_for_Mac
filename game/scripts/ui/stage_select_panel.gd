@@ -105,6 +105,8 @@ func _draw_portrait(e: Dictionary) -> void:
 		status.append("◈ 신호 감지")
 	elif e.get("signal", "") == "weak":
 		status.append("◈ 신호 약함")
+	if e.get("record", "") != "":
+		status.append(e.record)
 	if e.get("locked", false):
 		status = ["LOCKED"]
 	_text(Vector2(10, 168), "  ".join(status), 7, C_DIM, 176)
