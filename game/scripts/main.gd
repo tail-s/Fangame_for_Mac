@@ -188,7 +188,7 @@ func show_title() -> void:
 	items.append({"id": "options", "text": "옵션", "note": "음량 · 난이도 · 키 · 조작"})
 	items.append({"id": "quit", "text": "종료"})
 	get_tree().call_group("backdrop", "set_theme", "title")
-	_show_menu("REBIRTH PROTOCOL", "ORIGINAL FAN-INSPIRED BUILD  —  PROTOTYPE 0.10", items,
+	_show_menu("REBIRTH PROTOCOL", "ORIGINAL FAN-INSPIRED BUILD  —  PROTOTYPE 0.11", items,
 			"↑↓ 선택   Z / Enter 결정", _on_title_choice, Callable())
 	_menu.add_child(TitleHeroes.new())
 	Audio.music("title")
