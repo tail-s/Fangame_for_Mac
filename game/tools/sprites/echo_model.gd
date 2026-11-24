@@ -1,6 +1,7 @@
 extends RefCounted
 ## ECHO — original design: compact teal gunner with a purple core, a round
-## helmet with twin swept antennae and a wide gold visor, twin pistols. The
+## helmet with twin swept antennae and gold goggles pushed up on the brow, big
+## violet eyes, twin pistols. The
 ## aiming arm + pistol is its own sprite (16 angles); the small crawler form
 ## used by the copy ability is a separate 2-frame sprite.
 
@@ -22,25 +23,27 @@ const GUN := Color("3a4466")
 
 const ANGLES := 16
 
-## Hand-drawn head (32-bit style), facing right; anchor = head centre (6, 6).
-##   1-5 teal armour  q purple ear  v w x gold visor  f g h face
+## Hand-drawn head (32-bit style), facing right; anchor = head centre (7, 6).
+##   1-5 teal armour  q s purple  v w x gold goggles  f g h face  e i o eye  k suit
 const HEAD := [
-	"....23445....",
-	"..234444455..",
-	".23444444455.",
-	".123444444455",
-	"11vvwwwwwwwwx",
-	"11vwwwwwwwwww",
-	"112qq23ffgggh",
-	"112qq2ffggggh",
-	".1122fffgggh.",
-	".11222ffggh..",
-	"..11122fff...",
-	"....111......",
+	".....234445....",
+	"...1234444455..",
+	"..123444444455.",
+	".12334444444455",
+	".1233vwwwwwwwwx",
+	"11223vvvvvvvvv.",
+	"11222q22geegeh.",
+	"1122qs22goigih.",
+	"11222q22giigig.",
+	"11122222fgggg..",
+	".11122kkffgg...",
+	"..1111kkff.....",
 ]
 const HEAD_PAL := {"1": Color("1e6650"), "2": Color("2f8e78"), "3": Color("4fcf98"), "4": Color("82e6b8"),
-		"5": Color("c8fbe2"), "q": Color("b78af3"), "v": Color("a3681a"), "w": Color("f0b84a"),
-		"x": Color("fff3c4"), "f": Color("6f84a3"), "g": Color("a8bfd6"), "h": Color("d6e4f0")}
+		"5": Color("c8fbe2"), "q": Color("b78af3"), "s": Color("e2d0ff"), "v": Color("a3681a"),
+		"w": Color("f0b84a"), "x": Color("fff3c4"), "f": Color("c98a6a"), "g": Color("f0bd94"),
+		"h": Color("ffdcc0"), "e": Color("1a1030"), "i": Color("a070f0"), "o": Color("ffffff"),
+		"k": Color("2b3a5e")}
 
 var _r: Raster
 var _far := false
@@ -88,7 +91,7 @@ func _head(j: Dictionary, s: float) -> void:
 	_r.limb(c + Vector2(-1.5, -5.0).rotated(a) * s, c + Vector2(-10.0, -9.0).rotated(a) * s, 1.6, 1.0, ramp(ACCENT))
 	_r.limb(c + Vector2(0.8, -5.6).rotated(a) * s, c + Vector2(-7.0, -11.5).rotated(a) * s, 1.6, 1.0, ramp(ACCENT))
 	# Hand-drawn round helmet with a wide gold visor and purple ear pieces.
-	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(6, 6), {"line": ARMOR.darkened(0.6)})
+	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(7, 6), {"line": ARMOR.darkened(0.6)})
 
 
 func _body(j: Dictionary, s: float) -> void:
@@ -114,8 +117,10 @@ func _arm(j: Dictionary, side: String, s: float) -> void:
 	var el: Vector2 = j[side + "_elbow"]
 	var ha: Vector2 = j[side + "_hand"]
 	_r.limb(sh, el, 3.0 * s, 2.8 * s, ramp(SUIT))
-	_r.limb(el, ha, 3.4 * s, 3.8 * s, ramp(ARMOR))
-	_r.ellipse(ha + (ha - el).normalized() * 0.8 * s, 1.7 * s, 1.7 * s, 0.0, ramp(SUIT.lightened(0.3)))
+	_r.limb(el, ha, 4.0 * s, 5.0 * s, ramp(ARMOR))
+	# Purple cuff ring (ellipse x = across the forearm).
+	_r.ellipse(el.lerp(ha, 0.74), 2.3 * s, 0.9 * s, -j[side + "_fore_angle"], ramp(ACCENT), {"line": false, "shade": 2.0})
+	_r.ellipse(ha + (ha - el).normalized() * 1.1 * s, 1.9 * s, 1.9 * s, 0.0, ramp(SUIT.lightened(0.3)))
 	if side == "f":
 		# Second pistol in the far hand, along the forearm.
 		var d := (ha - el).normalized()
@@ -128,7 +133,7 @@ func _leg(j: Dictionary, side: String, s: float) -> void:
 	var knee: Vector2 = j[side + "_knee"]
 	var ankle: Vector2 = j[side + "_ankle"]
 	_r.limb(hip, knee, 3.8 * s, 3.4 * s, ramp(SUIT))
-	_r.limb(knee, ankle, 3.8 * s, 4.8 * s, ramp(ARMOR))
+	_r.limb(knee, ankle, 4.2 * s, 6.0 * s, ramp(ARMOR))
 	_r.ellipse(knee, 2.0 * s, 2.0 * s, 0.0, ramp(PLATE))
 	var fa: float = -j[side + "_foot"]
 	_r.poly(_pts(ankle, fa, [Vector2(-3.6, -1.6), Vector2(2.4, -1.6), Vector2(6.2, 2.4), Vector2(6.2, 5.0),
@@ -160,7 +165,7 @@ func draw_extra(r: Raster, name: String, origin: Vector2, _v: String, angle: flo
 		var el := origin + dir.rotated(0.9) * 4.0
 		var ha := el + dir * 4.5
 		_r.limb(origin, el, 3.0, 2.8, ramp(SUIT))
-		_r.limb(el, ha, 3.4, 3.8, ramp(ARMOR))
+		_r.limb(el, ha, 4.0, 5.0, ramp(ARMOR))
 		# Pistol: body, barrel, purple sight.
 		_r.limb(ha - dir * 0.5, ha + dir * 5.5, 3.4, 3.0, ramp(GUN))
 		_r.limb(ha + dir * 5.0, ha + dir * 8.0, 1.8, 1.8, ramp(GUN.lightened(0.2)))

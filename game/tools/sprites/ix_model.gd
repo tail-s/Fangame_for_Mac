@@ -5,7 +5,7 @@ extends RefCounted
 ## limbs between. As in 32-bit armor sprites, the base body is shared and each armor
 ## family swaps the palette and adds its own pieces:
 ##   neutral   white frame, teal fin, gold visor
-##   vanguard  blue + crimson: horn crest, chest chevron, back thruster, big guards, block buster, heel thrusters
+##   vanguard  gunmetal + gold: horn crest, chest chevron, back thruster, big guards, block buster, heel thrusters
 ##   aero      white + mint: wing fins, collar stripe, back wings, finned guards, vented buster, ankle fins
 ##   ultimate  violet + gold: vanguard pieces with aero wings
 
@@ -123,12 +123,11 @@ func _arm(j: Dictionary, side: String, v: String) -> void:
 	var ha: Vector2 = j[side + "_hand"]
 	var suit := _ramp(["k", "l", "m", "m"])
 	var armor := _ramp(["1", "3", "4", "5"])
-	_r.limb(sh, el, 3.6, 3.2, suit)
-	var fw := 5.6 if SHAPE[v] == "vanguard" else (4.4 if SHAPE[v] == "aero" else 5.0)
-	_r.limb(el, ha, fw - 0.8, fw, armor)
-	if SHAPE[v] == "vanguard":
-		_r.ellipse(el.lerp(ha, 0.7), 1.0, 2.6, -j[side + "_fore_angle"], _ramp(["p", "q", "s", "s"]), {"line": false, "shade": 2.0})
-	_r.ellipse(ha + (ha - el).normalized(), 2.0, 2.0, 0.0, _ramp(["l", "m", "m", "h"]))
+	_r.limb(sh, el, 3.4, 3.0, suit)
+	# Gauntlet widening to the wrist, dark fist.
+	var fw := 6.8 if SHAPE[v] == "vanguard" else (5.6 if SHAPE[v] == "aero" else 6.2)
+	_r.limb(el, ha, fw - 1.8, fw, armor)
+	_r.ellipse(ha + (ha - el).normalized() * 1.3, 2.1, 2.1, 0.0, _ramp(["k", "l", "m", "m"]))
 	match SHAPE[v]:
 		"vanguard":
 			_st(Kit.PAD_VANGUARD, sh.round(), Vector2i(4, 2))
@@ -144,10 +143,11 @@ func _leg(j: Dictionary, side: String, v: String) -> void:
 	var ankle: Vector2 = (j[side + "_ankle"] as Vector2).round()
 	var suit := _ramp(["k", "l", "m", "m"])
 	var armor := _ramp(["1", "3", "4", "5"])
-	_r.limb(hip, knee, 4.2, 3.8, suit)
-	var sw := 6.0 if SHAPE[v] == "vanguard" else (5.0 if SHAPE[v] == "aero" else 5.4)
-	_r.limb(knee, ankle, sw - 1.4, sw, armor)
-	_r.ellipse(knee, 2.2, 2.2, 0.0, armor)
+	_r.limb(hip, knee, 4.4, 4.0, suit)
+	# Tall boot: the shin guard flares into the foot (accent collar on the foot stamp).
+	var sw := 7.6 if SHAPE[v] == "vanguard" else (6.4 if SHAPE[v] == "aero" else 7.0)
+	_r.limb(knee, ankle, sw - 2.4, sw, armor)
+	_r.ellipse(knee, 2.4, 2.4, 0.0, armor)
 	var toe_down: bool = j[side + "_foot"] < -0.3
 	if toe_down:
 		_st(Kit.BOOT_DOWN, ankle, Kit.BOOT_DOWN_ANCHOR)

@@ -3,39 +3,44 @@ extends RefCounted
 ## Grids are palette-indexed, facing right, "." = empty:
 ##   1-5  armor ramp (dark -> highlight)      p q s  accent (dark, base, light)
 ##   k l m  undersuit (dark -> light)         v w x  visor (dark, base, glint)
-##   f g h  face plate                        y z    core gem (base, glint)
+##   f g h  face (shadow, base, light)        y z    core gem (base, glint)
+##   e i o  eye (lash line, iris, glint)
 ## As in 32-bit armor sprites, one base body is shared and each armor family adds
 ## its own pieces on top (and swaps the palette): see ix_model.gd.
 
 const PAL := {
-	"neutral": {"1": "4f6584", "2": "8ea5c0", "3": "c4d6e6", "4": "e6f1f7", "5": "ffffff",
-			"p": "147a85", "q": "2fc4cc", "s": "a5f5f7"},
-	"vanguard": {"1": "18377a", "2": "2856ad", "3": "3a7fe6", "4": "6aa4f3", "5": "bcd9ff",
-			"p": "8a1f2c", "q": "e34f5b", "s": "ff9aa3"},
+	"neutral": {"1": "34466a", "2": "62799e", "3": "9fb4cf", "4": "d3e2f0", "5": "ffffff",
+			"p": "0f6f7a", "q": "22b3be", "s": "93f0f2"},
+	"vanguard": {"1": "262c40", "2": "434d6b", "3": "66729a", "4": "95a1c6", "5": "d0d9f0",
+			"p": "8a5a10", "q": "f0b84a", "s": "ffe7a8"},
 	"aero": {"1": "587690", "2": "93b3c8", "3": "cde3ee", "4": "eef8fb", "5": "ffffff",
 			"p": "1f8c84", "q": "5fd8d0", "s": "b8fff9"},
 	"ultimate": {"1": "36206a", "2": "583a9e", "3": "7d58c8", "4": "a483e0", "5": "d4c2f6",
 			"p": "8a5a10", "q": "f0b84a", "s": "ffe7a8"},
 }
 const COMMON := {"k": "1a2242", "l": "2e3b64", "m": "4a5a8a", "v": "a3681a", "w": "f0b84a", "x": "fff3c4",
-		"f": "5f7493", "g": "97acc6", "h": "c9d7e7", "y": "13b9c2", "z": "e6ffff"}
+		"f": "c98a6a", "g": "f0bd94", "h": "ffdcc0", "y": "13b9c2", "z": "e6ffff",
+		"e": "142040", "i": "27b6d6", "o": "ffffff"}
 
 # --- head (anchor = head centre) --------------------------------------------------------
 
-const HEAD_ANCHOR := Vector2i(6, 6)
+const HEAD_ANCHOR := Vector2i(7, 6)
+## Swept helmet (3/4 view, facing right): crown peaks toward the front, gold brow
+## band ending in a forward point, accent sensor on the side plate, jaw guard
+## wrapping forward under the face, both eyes visible.
 const HEAD := [
-	"....234445...",
-	"..123444444..",
-	".12344444445.",
-	".123444444455",
-	"1123333333345",
-	"1122222vvwwwx",
-	"112qqm2vwwwww",
-	"112qmq2ffgggh",
-	"112mqm2fgggh.",
-	".1122222ffgg.",
-	"..11122fffh..",
-	"...1111......",
+	"......123455...",
+	"....1233444455.",
+	"..112334444445.",
+	".11223344444445",
+	"1122333vwwwwwwx",
+	"11222222fhhhhh.",
+	"1122qs22geegeh.",
+	"1122pq22goigih.",
+	"11122222giigig.",
+	".11122223fggg..",
+	"..1111222334f..",
+	"...1111122.....",
 ]
 ## Neutral: swept fin off the back of the helmet.
 const HEAD_FIN := [
@@ -68,18 +73,19 @@ const HEAD_WINGS := [
 # --- torso (anchor = pelvis) ------------------------------------------------------------
 
 const TORSO_ANCHOR := Vector2i(6, 10)
+## Collar ring and belt in the accent colour, core gem in the chest plate.
 const TORSO := [
-	"...kllmmk....",
-	"..2344444455.",
-	".123444444455",
-	".123344444445",
-	".1233yyz44445",
-	".1223yyy34445",
-	"..1222333344.",
-	"...11222233..",
-	"...lmmmmmml..",
-	"...kllmllk...",
-	"...kkllllk...",
+	"....kllmmk....",
+	"..12pqqqqs45..",
+	".1233444444455",
+	".1233444444455",
+	".12233yyz44445",
+	".12233yyy34445",
+	"..1223333344..",
+	"...11222223...",
+	"...kllmmmlk...",
+	"..pqqqqqqqqs..",
+	"..1223k42334..",
 ]
 const TORSO_CHEVRON := [  # vanguard chest plate edge
 	"..pqqqs.",
@@ -101,19 +107,20 @@ const TORSO_STRIPE := [  # aero collar stripe
 # --- boots (anchor = ankle) ---------------------------------------------------------------
 
 const BOOT_ANCHOR := Vector2i(4, 1)
+## Accent collar round the ankle, toe cap catching the light.
 const BOOT := [
-	"..234444....",
-	".12344445...",
-	".123344455..",
-	"1123334444S5",
-	"112233344445",
-	".11222223333",
-	".kkkkkkkkkkk",
+	"..pqqqqs....",
+	".1pqqqqs5...",
+	".1233444455.",
+	"1122333444S5",
+	"112223334445",
+	".1112222333.",
+	".kkkkkkkkkk.",
 ]
 const BOOT_DOWN_ANCHOR := Vector2i(3, 1)
 const BOOT_DOWN := [
-	".23444...",
-	".123445..",
+	".pqqqs...",
+	".1pqqqs..",
 	".1233445.",
 	".11233445",
 	"..1122344",
@@ -137,11 +144,11 @@ const BOOT_FIN := [  # aero ankle fin
 
 const PAD_ANCHOR := Vector2i(3, 2)
 const PAD := [
-	".2445.",
-	"234455",
-	"123445",
-	"112334",
-	".1122.",
+	"..2445.",
+	".234455",
+	"1233445",
+	"1123344",
+	".pqqqs.",
 ]
 const PAD_VANGUARD := [
 	"..34455.",
@@ -161,12 +168,12 @@ const PAD_AERO := [
 
 const BUSTER_ANCHOR := Vector2i(1, 3)
 const BUSTER := [
-	".23444444445..",
-	"1234444444455k",
-	"123344444444km",
-	"12233333344kqm",
-	"1122222223344k",
-	".111111112222.",
+	".23s44444445..",
+	"123q444444455k",
+	"123q44444444km",
+	"122q3333344kqm",
+	"112p222223344k",
+	".11p111112222.",
 ]
 const BUSTER_VANGUARD := [
 	".234444pq44444455..",

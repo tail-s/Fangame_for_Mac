@@ -9,7 +9,7 @@ const SLOT_LABEL := {"head": "HEAD", "body": "BODY", "arm": "ARM", "leg": "LEG"}
 const ARMOR_NAME := {"neutral": "NEUTRAL", "vanguard": "VANGUARD", "aero": "AERO", "ultimate": "ULTIMATE"}
 const ARMOR_COLOR := {
 	"neutral": Color("d7edf3"),
-	"vanguard": Color("3179e3"),
+	"vanguard": Color("f0b84a"),
 	"aero": Color("71dedf"),
 	"ultimate": Color("8a63d2"),
 }

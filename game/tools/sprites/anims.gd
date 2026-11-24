@@ -7,7 +7,7 @@ const ANKLE_Y := -5.0
 
 
 static func stand(extra := {}) -> Dictionary:
-	var p := {"na": Vector2(2.0, ANKLE_Y), "fa": Vector2(-2.2, ANKLE_Y),
+	var p := {"na": Vector2(3.0, ANKLE_Y), "fa": Vector2(-3.2, ANKLE_Y),
 			"ns": -0.12, "ne": 0.45, "fs": 0.18, "fe": 0.35}
 	p.merge(extra, true)
 	return p

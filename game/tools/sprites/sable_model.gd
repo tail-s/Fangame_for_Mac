@@ -1,7 +1,7 @@
 extends RefCounted
-## SABLE — original design: slim gunmetal swordsman, orange accents, masked face
-## with a cyan eye slit, long swept-back blade crest, coat-tail plates and a
-## saber worn across the back. The swinging arm + blade is its own sprite
+## SABLE — original design: slim gunmetal swordsman, orange accents, sharp cyan
+## eyes under a pointed brim with a mask over the lower face, long swept-back
+## blade crest, coat-tail plates and a saber worn across the back. The swinging arm + blade is its own sprite
 ## (16 angles) so slashes rotate cleanly.
 
 const Raster = preload("res://tools/sprites/raster.gd")
@@ -22,26 +22,26 @@ const BLADE := Color("c9fbff")
 
 const ANGLES := 16
 
-## Hand-drawn head (32-bit style), facing right; anchor = head centre (6, 6).
-##   1-5 steel  p q s orange  k l m mask / vent  v w x eye slit
+## Hand-drawn head (32-bit style), facing right; anchor = head centre (7, 6).
+##   1-5 steel  p q s orange  k l m mask  g skin  e i o eye (lash, iris, glint)
 const HEAD := [
-	"......pqs....",
-	"...2344pq45..",
-	"..2344444455.",
-	".123444444455",
-	"1123333333335",
-	"1122222vwwwwx",
-	"112m22kkkkkkl",
-	"112ml2kllllll",
-	"112mm2kllllk.",
-	".11222kkllk..",
-	"..1112kkkk...",
-	"...111.......",
+	".......pqs.....",
+	"...12334pq45...",
+	"..123344444455.",
+	".12233333333345",
+	"11222222ghhhhh.",
+	"11222q22geegeg.",
+	"1122qs22goigig.",
+	"11222q22klllllm",
+	"11222222kllllk.",
+	".1122222kkllk..",
+	"..11122kkkk....",
+	"...111.........",
 ]
 const HEAD_PAL := {"1": Color("3a4268"), "2": Color("56608a"), "3": Color("7f8ab8"), "4": Color("a3aed6"),
 		"5": Color("d6ddf2"), "p": Color("a8501c"), "q": Color("f08a3a"), "s": Color("ffc28a"),
 		"k": Color("1e2240"), "l": Color("2c3354"), "m": Color("3c4570"),
-		"v": Color("1d8fa0"), "w": Color("3de0ee"), "x": Color("e6ffff")}
+		"g": Color("e8b48c"), "h": Color("ffd8b8"), "e": Color("141428"), "i": Color("3de0ee"), "o": Color("ffffff")}
 
 var _r: Raster
 var _far := false
@@ -109,7 +109,7 @@ func _head(j: Dictionary) -> void:
 	_r.poly(_pts(c, a, [Vector2(-1.5, -5.0), Vector2(-13.0, -7.2), Vector2(-10.8, -5.0), Vector2(-3.5, -2.0)]), ramp(ACCENT))
 	_r.poly(_pts(c, a, [Vector2(-3.0, -2.5), Vector2(-11.0, -2.6), Vector2(-9.0, -0.8), Vector2(-4.0, 0.5)]), ramp(ACCENT.darkened(0.15)))
 	# Hand-drawn helmet: pointed back, orange crest stub, cyan eye slit, mask.
-	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(6, 6), {"line": ARMOR.darkened(0.6)})
+	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(7, 6), {"line": ARMOR.darkened(0.6)})
 
 
 func _body(j: Dictionary) -> void:
@@ -131,9 +131,10 @@ func _arm(j: Dictionary, side: String) -> void:
 	var el: Vector2 = j[side + "_elbow"]
 	var ha: Vector2 = j[side + "_hand"]
 	_r.limb(sh, el, 3.2, 2.8, ramp(SUIT))
-	_r.limb(el, ha, 3.6, 4.2, ramp(ARMOR))
-	_r.ellipse(el.lerp(ha, 0.75), 0.9, 2.2, -j[side + "_fore_angle"], ramp(ACCENT), {"line": false, "shade": 2.0})
-	_r.ellipse(ha + (ha - el).normalized() * 0.8, 1.8, 1.8, 0.0, ramp(MASK))
+	_r.limb(el, ha, 4.2, 5.6, ramp(ARMOR))
+	# Orange cuff ring (ellipse x = across the forearm).
+	_r.ellipse(el.lerp(ha, 0.74), 2.6, 1.0, -j[side + "_fore_angle"], ramp(ACCENT), {"line": false, "shade": 2.0})
+	_r.ellipse(ha + (ha - el).normalized() * 1.2, 2.0, 2.0, 0.0, ramp(MASK))
 	# Angular pauldron.
 	_r.poly(_pts(sh, j.lean, [Vector2(-3.0, 1.2), Vector2(-2.6, -2.4), Vector2(1.4, -3.0),
 			Vector2(3.4, -0.8), Vector2(1.6, 2.2)]), ramp(PLATE))
@@ -145,8 +146,8 @@ func _leg(j: Dictionary, side: String) -> void:
 	var hip: Vector2 = j[side + "_hip"]
 	var knee: Vector2 = j[side + "_knee"]
 	var ankle: Vector2 = j[side + "_ankle"]
-	_r.limb(hip, knee, 3.8, 3.4, ramp(SUIT))
-	_r.limb(knee, ankle, 3.6, 4.6, ramp(ARMOR))
+	_r.limb(hip, knee, 4.0, 3.6, ramp(SUIT))
+	_r.limb(knee, ankle, 4.4, 6.4, ramp(ARMOR))
 	# Knee guard with a forward spike.
 	var ka: float = -j[side + "_shin_angle"]
 	_r.poly(_pts(knee, ka, [Vector2(-1.6, -1.8), Vector2(2.8, -2.6), Vector2(2.0, 1.4), Vector2(-1.6, 1.8)]), ramp(PLATE))
@@ -178,7 +179,8 @@ func draw_extra(r: Raster, name: String, origin: Vector2, _v: String, angle: flo
 	var el := origin + dir * 4.2 + nrm * 0.6
 	var ha := origin + dir * 8.4
 	_r.limb(origin, el, 3.2, 2.8, ramp(SUIT))
-	_r.limb(el, ha, 3.6, 4.2, ramp(ARMOR))
+	_r.limb(el, ha, 4.2, 5.6, ramp(ARMOR))
+	_r.ellipse(el.lerp(ha, 0.74), 2.6, 1.0, -angle, ramp(ACCENT), {"line": false, "shade": 2.0})
 	# Blade first (behind the fist), then guard and fist.
 	var b0 := ha + dir * 2.0
 	var b1 := ha + dir * 19.0
