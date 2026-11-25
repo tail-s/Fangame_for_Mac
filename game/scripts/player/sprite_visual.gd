@@ -13,9 +13,11 @@ extends Node2D
 const ART := "res://art/characters/"
 const FLASH := preload("res://scripts/player/sprite_flash.gdshader")
 const SpriteFx = preload("res://scripts/fx/sprite_fx.gd")
+const ArmorFx = preload("res://scripts/fx/armor_fx.gd")
+const Afterimage = preload("res://scripts/fx/afterimage.gd")
+const Autoloads = preload("res://scripts/core/autoloads.gd")
 const C_LV1 := Color("3de0ee")
 const C_LV2 := Color("f0b84a")
-const C_MINT := Color("71dedf")
 const C_SABLE := Color("f08a3a")
 const C_ECHO := Color("b78af3")
 const C_BLADE := Color(0.85, 1.0, 1.0)
@@ -56,6 +58,10 @@ var _prev_charge := 0
 var _f := 1
 var _was_floor := true
 var _warp_t := 0.0
+var _ghost_clock := 0.0
+## Time in the current special phase ("<kind><phase>"), for wing / landing effects.
+var _sp_key := ""
+var _sp_t := 0.0
 ## Set from outside: "warp_in" when a stage starts, "victory" on mission complete.
 var force_anim := "":
 	set(value):
@@ -311,15 +317,68 @@ func _effects(p, delta: float, prev_anim: String) -> void:
 	if _arm_name == "buster":
 		var st: float = p.shoot_pose_timer
 		if st > _prev_shoot + 0.01:
-			_spawn("muzzle_gold" if _prev_charge == 2 else "muzzle", muzzle(), false, 24.0)
+			_spawn(ArmorFx.muzzle_strip(_family("arm"), _prev_charge), muzzle(), false, 24.0)
 		_prev_shoot = st
 	var charge: int = p.charge_level()
 	_prev_charge = charge
 	_aura.visible = charge > 0
 	if charge > 0:
-		_aura.texture = SpriteFx.strip("charge_gold" if charge == 2 else "charge")
+		_aura.texture = SpriteFx.strip(ArmorFx.charge_strip(_family("arm"), charge))
 		var cw := _aura.texture.get_width() / 4
 		_aura.region_rect = Rect2((int(p.anim_time * 14.0) % 4) * cw, 0, cw, _aura.texture.get_height())
+	_afterimages(p, delta)
+
+
+## Armor family worn in `slot` (IX only; SABLE / ECHO count as neutral).
+func _family(slot: String) -> String:
+	return part_armor.get(slot, "neutral") if character == "ix" else "neutral"
+
+
+## Colour of SABLE / ECHO / IX for moves that are not armor-specific.
+func _char_color() -> Color:
+	return C_SABLE if character == "sable" else (C_ECHO if character == "echo" else C_LV1)
+
+
+## Afterimages: rushes and dives always; dashes when the LEG armor gives them weight
+## (Vanguard ground dash attack, Aero / Ultimate air dash).
+func _afterimages(p, delta: float) -> void:
+	var key: String = String(p.special_kind) + str(p.special_phase)
+	if key != _sp_key:
+		_sp_key = key
+		_sp_t = 0.0
+	else:
+		_sp_t += delta
+	_ghost_clock += delta
+	if not (p is Node2D) or not visible:
+		return
+	var every := 0.0
+	var color := Color.WHITE
+	var alpha := 0.45
+	var life := 0.18
+	var special: String = p.special_kind
+	if special in ["overdrive", "nova"]:
+		every = 0.05
+		color = ArmorFx.ghost(ArmorFx.SPECIAL_FAMILY[special])
+	elif special == "skybreaker" and p.special_phase == 1:
+		every = 0.03
+		color = ArmorFx.ghost("aero")
+	elif special == "tag_strike":
+		every = 0.05
+		color = _char_color()
+	elif character == "ix" and p.air_dashing and _family("leg") in ["aero", "ultimate"]:
+		every = 0.05
+		color = ArmorFx.ghost(_family("leg"))
+	elif character == "ix" and p.is_dashing() and not p.air_dashing and _family("leg") == "vanguard":
+		every = 0.06
+		color = ArmorFx.ghost("vanguard")
+		alpha = 0.4
+		life = 0.16
+	if every <= 0.0:
+		_ghost_clock = 0.0
+		return
+	if _ghost_clock >= every:
+		_ghost_clock = 0.0
+		Afterimage.capture(_rig, p, color, alpha, life)
 
 
 func _spawn(name: String, offset: Vector2, world: bool, speed := 18.0) -> void:
@@ -342,9 +401,17 @@ func _tint(p) -> void:
 	var tint := Color.WHITE
 	if p.is_hurt() and frame_n % 4 < 2:
 		amount = 0.85
-	elif (p.charge_level() == 2 or p.special_kind != "") and frame_n % 6 < 3:
-		tint = C_LV2
-		amount = 0.4
+	elif p.charge_level() == 2 or p.special_kind != "":
+		var fam := _family("arm")
+		if ArmorFx.SPECIAL_FAMILY.has(p.special_kind):
+			fam = ArmorFx.SPECIAL_FAMILY[p.special_kind]
+		# Armored IX glows in its energy's mid tone (a light tint would bleach white armor).
+		tint = ArmorFx.energy(fam)[1] if character == "ix" and fam != "neutral" else C_LV2
+		# "Reduce flashes": a steady glow instead of the strobe.
+		if not Autoloads.flashes():
+			amount = 0.18
+		elif frame_n % 6 < 3:
+			amount = 0.4
 	_mat.set_shader_parameter("tint", tint)
 	_mat.set_shader_parameter("amount", amount)
 
@@ -374,22 +441,26 @@ func _v(x: float, y: float) -> Vector2:
 	return Vector2(x * _f, y)
 
 
-## Behind the sprites: speed streaks, flames, dust, wall sparks.
+## Behind the sprites: speed streaks, armor special auras and wings, thrusters, warp beam.
 func _draw() -> void:
 	var p = player
 	if p == null:
 		return
 	var t: float = p.anim_time
-	var frame_n := Engine.get_physics_frames()
 	var special: String = p.special_kind
+	var strobe := Autoloads.flashes()
 	if p.air_dashing or special in ["overdrive", "nova", "tag_strike"]:
-		var c := C_SABLE if character == "sable" else (C_ECHO if character == "echo" else C_LV1)
+		var c := _char_color()
+		if ArmorFx.SPECIAL_FAMILY.has(special):
+			c = ArmorFx.energy(ArmorFx.SPECIAL_FAMILY[special])[1]
+		elif character == "ix" and p.air_dashing and _family("leg") != "neutral":
+			c = ArmorFx.energy(_family("leg"))[1]
 		for i in 4:
 			var y := -26.0 + i * 6.0
 			var x0 := -_f * (8.0 + (i % 2) * 4.0)
 			draw_line(Vector2(x0, y), Vector2(x0 - _f * (10.0 + i * 2.0), y), Color(c, 0.55 - i * 0.1), 1.0)
 	if force_anim == "warp_in" and _warp_t < BEAM_TIME + 0.12:
-		var c := C_SABLE if character == "sable" else (C_ECHO if character == "echo" else C_LV1)
+		var c := _char_color()
 		var k := clampf(_warp_t / BEAM_TIME, 0.0, 1.0)
 		var top := -220.0
 		var bottom := lerpf(top, -2.0, k)
@@ -397,13 +468,139 @@ func _draw() -> void:
 		draw_rect(Rect2(-1, top, 2, bottom - top), Color(1, 1, 1, 0.9))
 		if k >= 1.0:
 			draw_rect(Rect2(-8, -3, 16, 3), Color(c, 0.7))
-	if special == "skybreaker" and p.special_phase == 1:
-		draw_rect(Rect2(-5, -62, 10, 40), Color(C_MINT, 0.35))
+	match special:
+		"overdrive":
+			_draw_rush_sparks(t)
+		"nova":
+			_draw_nova_aura(t, strobe)
+		"skybreaker":
+			_draw_sky_breaker(int(p.special_phase))
 	if p.flying or _field(p, "hovering", false):
-		var fc := C_ECHO if character == "echo" else C_LV2
-		for x in [-1.0, 3.0]:
-			var flame := 4.0 + fmod(t * 50.0, 3.0)
-			draw_colored_polygon(PackedVector2Array([_v(x - 2, 0), _v(x + 2, 0), _v(x, flame)]), fc)
+		_draw_thrusters(t)
+	elif character == "ix" and _field(p, "gliding", false):
+		_draw_glide_wisps(t)
+
+
+## Pixel at facing-space (x, y): mirrored by hand like _v, so a 1px cell stays a cell.
+func _dot(ci: CanvasItem, x: float, y: float, size: Vector2, col: Color) -> void:
+	var px := x if _f > 0 else -x - size.x
+	ci.draw_rect(Rect2(Vector2(px, y).round(), size), col)
+
+
+func _ellipse_pts(c: Vector2, rx: float, ry: float, n := 20) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in n:
+		var a := i * TAU / n
+		pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
+	return pts
+
+
+func _ellipse_ring(ci: CanvasItem, c: Vector2, rx: float, ry: float, col: Color) -> void:
+	var pts := _ellipse_pts(c, rx, ry)
+	pts.append(pts[0])
+	ci.draw_polyline(pts, col, 1.0)
+
+
+## Energy blade (Sky Breaker wing): narrow root, widest just past the middle, sharp tip.
+func _blade(root: Vector2, dir: Vector2, length: float, width: float, ramp: Array, alpha := 0.85) -> void:
+	var n := Vector2(-dir.y, dir.x)
+	var tip := root + dir * length
+	var mid := root + dir * length * 0.55
+	draw_colored_polygon(PackedVector2Array([root, mid + n * width, tip, mid - n * width * 0.45]),
+			Color(ramp[1], alpha))
+	draw_line(root.round(), tip.round(), Color(ramp[2], alpha), 1.0)
+	draw_rect(Rect2(tip.round() - Vector2(1, 1), Vector2(2, 2)), Color(ramp[3], alpha))
+
+
+## Overdrive Rush: gold sparks scraping off the boots and a crimson heat wake.
+func _draw_rush_sparks(t: float) -> void:
+	var red: Array = ArmorFx.energy("vanguard")
+	for i in 8:
+		var k := fmod(t * 4.0 + i * 0.125, 1.0)
+		var col: Color = ArmorFx.GOLD[2] if k < 0.3 else (ArmorFx.GOLD[1] if k < 0.65 else red[0])
+		_dot(self, -4.0 - k * 28.0, -1.0 - sin(k * PI) * (3.0 + (i % 3) * 2.5),
+				Vector2(2, 1) if k < 0.4 else Vector2.ONE, col)
+	for i in 3:
+		var y := -24.0 + i * 8.0
+		_dot(self, -30.0, y, Vector2(22, 1), Color(red[1], 0.25))
+
+
+## Nova Strike: a gold energy shell with a violet inner ring and a comet tail.
+func _draw_nova_aura(t: float, strobe: bool) -> void:
+	var gold: Array = ArmorFx.energy("ultimate")
+	var violet: Array = ArmorFx.accent("ultimate")
+	var c := Vector2(0, -18)
+	var pulse := 1.0 + (0.08 * sin(t * 40.0) if strobe else 0.0)
+	var rx := 13.0 * pulse
+	var ry := 19.0 * pulse
+	draw_colored_polygon(_ellipse_pts(c, rx, ry), Color(gold[1], 0.2))
+	_ellipse_ring(self, c, rx - 2.0, ry - 2.0, Color(violet[3], 0.55))
+	_ellipse_ring(self, c, rx, ry, Color(gold[2], 0.9))
+	for i in 3:
+		var y := -26.0 + i * 8.0
+		var pts := PackedVector2Array()
+		for k in 7:
+			pts.append(_v(-10.0 - k * 4.0, y + (i - 1) * k * 0.9))
+		draw_polyline(pts, Color(gold[1], 0.75 - i * 0.18), 1.0)
+
+
+## Sky Breaker: wings flare open on the rise, a lance of light rides the dive,
+## and a ring of air spreads from the landing.
+func _draw_sky_breaker(phase: int) -> void:
+	var blue: Array = ArmorFx.energy("aero")
+	match phase:
+		0:
+			var k := clampf(_sp_t / 0.2, 0.0, 1.0)
+			var ease := 1.0 - (1.0 - k) * (1.0 - k)
+			# Far wing (faint, leaning forward), then the near wing's three blades fanning back.
+			for i in 2:
+				var a := 0.2 + i * 0.4
+				var d := Vector2(sin(a * ease) * _f, -cos(a * ease))
+				_blade(_v(2, -24), d, (14.0 + i * 4.0) * (0.4 + 0.6 * ease), 2.6, blue, 0.45)
+			for i in 3:
+				var a := (0.45 + i * 0.45) * ease
+				var d := Vector2(-sin(a) * _f, -cos(a))
+				_blade(_v(-4, -24), d, (21.0 + i * 4.0) * (0.4 + 0.6 * ease), 4.4 - i * 0.7, blue)
+		1:
+			draw_rect(Rect2(-6, -74, 12, 50), Color(blue[1], 0.28))
+			draw_rect(Rect2(-3, -70, 6, 46), Color(blue[2], 0.55))
+			draw_rect(Rect2(-1, -66, 2, 42), Color(blue[3], 0.9))
+			for i in 4:
+				var k := fmod(_sp_t * 6.0 + i * 0.25, 1.0)
+				var x := -9.0 if i % 2 == 0 else 8.0
+				draw_rect(Rect2(x, -20.0 - k * 50.0, 1, 6), Color(blue[2], 1.0 - k))
+		_:
+			var k := clampf(_sp_t / 0.2, 0.0, 1.0)
+			var rx := 6.0 + k * 26.0
+			_ellipse_ring(self, Vector2(0, -1), rx, 2.0 + k * 4.0, Color(blue[2], 1.0 - k))
+			_ellipse_ring(self, Vector2(0, -1), rx * 0.6, 1.0 + k * 2.0, Color(blue[3], 0.8 * (1.0 - k)))
+
+
+## Flight / hover jets from the boots in the LEG armor's energy colour (ECHO violet),
+## plus drifting motes off Aero / Ultimate wings.
+func _draw_thrusters(t: float) -> void:
+	var ramp: Array
+	if character == "echo":
+		ramp = [C_ECHO.darkened(0.4), C_ECHO, C_ECHO.lightened(0.5), Color.WHITE]
+	else:
+		ramp = ArmorFx.energy(_family("leg"))
+	for x in [-1.0, 3.0]:
+		var flame := 5.0 + fmod(t * 50.0 + x, 3.0)
+		draw_colored_polygon(PackedVector2Array([_v(x - 2, 0), _v(x + 2, 0), _v(x, flame)]), Color(ramp[1], 0.85))
+		draw_colored_polygon(PackedVector2Array([_v(x - 1, 0), _v(x + 1, 0), _v(x, flame * 0.6)]), ramp[2])
+		_dot(self, x - 0.5, 0.0, Vector2.ONE, ramp[3])
+	if character == "ix" and _family("leg") in ["aero", "ultimate"]:
+		for i in 3:
+			var k := fmod(t * 2.5 + i / 3.0, 1.0)
+			_dot(self, -7.0 - k * 12.0, -24.0 + i * 3.0 + k * 4.0, Vector2.ONE, Color(ramp[2], 1.0 - k))
+
+
+## Aero BODY glide: wind wisps peeling off the back.
+func _draw_glide_wisps(t: float) -> void:
+	var ramp: Array = ArmorFx.energy(_family("body"))
+	for i in 3:
+		var k := fmod(t * 3.0 + i / 3.0, 1.0)
+		_dot(self, -6.0 - k * 14.0, -22.0 + i * 3.0 + k * 2.0, Vector2(2, 1), Color(ramp[2], (1.0 - k) * 0.8))
 
 
 ## In front of the sprites: charge aura, saber trails, parry, ECHO form marks.
@@ -425,11 +622,43 @@ func _draw_front() -> void:
 			_front.draw_arc(_shoulder(), 13.0, 0.0, TAU, 16, Color(C_ECHO, 0.5), 1.0)
 		elif atk.copy != "":
 			_front.draw_circle(_v(-6, -33), 2.0, C_ECHO)
+	match p.special_kind:
+		"overdrive":
+			_draw_claw_ram(t)
+		"nova":
+			_draw_nova_core(t)
 	var charge: int = p.charge_level()
 	if charge <= 0:
 		return
-	var cc := C_LV2 if charge == 2 else C_LV1
+	var cc := ArmorFx.charge_color(_family("arm"), charge)
 	_front.draw_circle(muzzle(), 1.5 + (frame_n % 3) * 0.5, cc)
+
+
+## Overdrive Rush: a magenta energy wedge thrown ahead of the claw, with talon streaks.
+func _draw_claw_ram(t: float) -> void:
+	var red: Array = ArmorFx.energy("vanguard")
+	var flick := Autoloads.flashes() and int(t * 30.0) % 2 == 0
+	var top := _v(13, -31)
+	var tip := _v(26, -16)
+	var bot := _v(13, -1)
+	_front.draw_colored_polygon(PackedVector2Array([top, tip, bot, _v(17, -16)]),
+			Color(red[1], 0.35 if flick else 0.5))
+	_front.draw_colored_polygon(PackedVector2Array([_v(15, -25), _v(23, -16), _v(15, -7), _v(18, -16)]),
+			Color(red[2], 0.55))
+	_front.draw_polyline(PackedVector2Array([top, tip, bot]), red[3] if flick else red[2], 1.0)
+	for i in 3:
+		var y := -22.0 + i * 6.0
+		_front.draw_line(_v(8, y), _v(20.0 - absf(i - 1) * 3.0, y + (i - 1) * 1.5), Color(red[2], 0.9), 1.0)
+
+
+## Nova Strike: a gold four-point star at the chest.
+func _draw_nova_core(t: float) -> void:
+	var gold: Array = ArmorFx.energy("ultimate")
+	var c := _v(9, -18).round()
+	var r := 5.0 + (fmod(t * 20.0, 2.0) if Autoloads.flashes() else 0.0)
+	for d in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+		_front.draw_line(c, c + d * r, gold[2], 1.0)
+	_front.draw_rect(Rect2(c - Vector2(1, 1), Vector2(3, 3)), gold[3])
 
 
 ## Arc trailing the blade over the last part of the swing.

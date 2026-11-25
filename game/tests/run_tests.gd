@@ -10,6 +10,10 @@ const Walker = preload("res://scripts/enemies/walker.gd")
 const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
 const EnemyShot = preload("res://scripts/combat/enemy_shot.gd")
 const InputSetup = preload("res://scripts/core/input_setup.gd")
+const PlayerShot = preload("res://scripts/combat/player_shot.gd")
+const ArmorFx = preload("res://scripts/fx/armor_fx.gd")
+const Afterimage = preload("res://scripts/fx/afterimage.gd")
+const SpriteFx = preload("res://scripts/fx/sprite_fx.gd")
 
 const FLOOR := Rect2(-400, 100, 1200, 32)
 const N := "neutral"
@@ -49,6 +53,9 @@ func _run_all() -> void:
 	await test_breaker()
 	await test_overdrive()
 	await test_skybreaker()
+	await test_armor_shot_looks()
+	await test_afterimages()
+	test_armor_fx_strips()
 	await test_level_file()
 	await test_prism_stage()
 	await test_boss()
@@ -288,6 +295,94 @@ func test_skybreaker() -> void:
 			break
 	_check(waves == 2, "full Aero set: Sky Breaker dives and sends 2 shockwaves")
 	await _free(w)
+
+
+# --- armor move effects (roadmap 11) ---------------------------------------------------
+
+func _shot_families() -> Array:
+	var out := []
+	for s in get_nodes_in_group("player_shot"):
+		if s is PlayerShot and not s.is_queued_for_deletion() and s.level > 0:
+			out.append(s.family)
+	return out
+
+
+func test_armor_shot_looks() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	var seen := {}
+	for fam in [N, V, A, "ultimate"]:
+		if fam == "ultimate":
+			p.set_frame("ultimate")
+		else:
+			p.set_frame("parts")
+			p.apply_loadout(_lo(N, N, fam, N))
+		p.in_shoot = true
+		await _frames(85)
+		p.in_shoot = false
+		await _frames(2)
+		seen[fam] = _shot_families()
+		await _frames(95)
+	p.set_frame("parts")
+	_check(seen[N] == [N] and seen[V] == [V] and seen[A] == [A, A, A] and seen["ultimate"] == ["ultimate"],
+			"charged shots carry the ARM armor's look (%s)" % str(seen))
+	# The armored shot sprites are real pixel art, not empty images.
+	var claw: Image = PlayerShot._claw_image(false, ArmorFx.energy(V), ArmorFx.accent(V), 0)
+	var lance: Image = PlayerShot._lance_image(2, 0.26, ArmorFx.energy(A), ArmorFx.GOLD, 0)
+	_check(_opaque(claw) > 60 and _opaque(lance) > 40,
+			"Vanguard claw wave / Aero lance sprites drawn (%d / %d px)" % [_opaque(claw), _opaque(lance)])
+	await _free(w)
+
+
+func _opaque(img: Image) -> int:
+	var n := 0
+	for y in img.get_height():
+		for x in img.get_width():
+			if img.get_pixel(x, y).a > 0.0:
+				n += 1
+	return n
+
+
+func _ghosts(w: Node) -> Array:
+	var out := []
+	for c in w.get_children():
+		if c.get_script() == Afterimage and not c.is_queued_for_deletion():
+			out.append(c)
+	return out
+
+
+func test_afterimages() -> void:
+	var w := _world([FLOOR])
+	var p = await _grounded(w)
+	p.in_dash = true
+	await _frames(12)
+	p.in_dash = false
+	_check(_ghosts(w).is_empty(), "neutral dash leaves no afterimages")
+	await _frames(30)
+	p.apply_loadout(_lo(V, V, V, V))
+	p.set_core(100.0)
+	p.in_special = true
+	await _frames(2)
+	p.in_special = false
+	await _frames(14)
+	var ghosts := _ghosts(w)
+	var behind := true
+	for g in ghosts:
+		behind = behind and g.get_index() < p.get_index() and g.get_child_count() > 0
+	_check(ghosts.size() >= 2 and behind, "Overdrive Rush leaves afterimages behind IX (%d)" % ghosts.size())
+	await _frames(60)
+	_check(_ghosts(w).is_empty(), "afterimages fade and free themselves")
+	await _free(w)
+
+
+func test_armor_fx_strips() -> void:
+	var missing := []
+	for fam in [N, V, A, "ultimate"]:
+		for lv in [1, 2]:
+			for strip in [ArmorFx.charge_strip(fam, lv), ArmorFx.muzzle_strip(fam, lv)]:
+				if not ResourceLoader.exists("res://art/fx/%s.png" % strip) or not SpriteFx.FRAMES.has(strip):
+					missing.append(strip)
+	_check(missing.is_empty(), "every armor charge / muzzle strip is baked and registered %s" % str(missing))
 
 
 func test_prism_stage() -> void:

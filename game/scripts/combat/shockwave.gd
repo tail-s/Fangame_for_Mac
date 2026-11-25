@@ -37,9 +37,10 @@ func _on_body_entered(body: Node) -> void:
 		body.take_damage(damage)
 
 
-# Mint energy blade rising off the ground (dark trailing edge, bright leading edge,
+# Aero energy blade rising off the ground (dark trailing edge, bright leading edge,
 # white crest), a ground streak and kicked-up grit; fades out over its life.
-const MINT := [Color("1d7c84"), Color("3fb8bb"), Color("71dedf"), Color("dcfffb")]
+# Colours: the Aero armor's blue energy (scripts/fx/armor_fx.gd).
+const MINT := [Color("1f5fb8"), Color("2f8cff"), Color("8ec8ff"), Color("eef8ff")]
 const GRIT := Color("8aa7bd")
 
 

@@ -70,7 +70,8 @@ func _ready() -> void:
 	Game.settings_changed.connect(_on_settings_changed)
 	Audio.music_finished.connect(_on_music_finished)
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--autoshot=") or arg.begins_with("--gallery=") or arg.begins_with("--portraits="):
+		if (arg.begins_with("--autoshot=") or arg.begins_with("--gallery=") or arg.begins_with("--portraits=")
+				or arg.begins_with("--moves=")):
 			Game.save_enabled = false
 			Game.new_game()
 			Game.silent = true  # automated runs open a window: keep them silent
@@ -78,6 +79,7 @@ func _ready() -> void:
 			var shot := Autoshot.new()
 			shot.gallery = arg.begins_with("--gallery=")
 			shot.portraits = arg.begins_with("--portraits=")
+			shot.moves = arg.begins_with("--moves=")
 			shot.out_dir = arg.split("=", true, 1)[1]
 			shot.main = self
 			add_child(shot)

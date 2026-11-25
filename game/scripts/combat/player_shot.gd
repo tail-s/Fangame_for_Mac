@@ -10,6 +10,8 @@ extends Area2D
 const Layers = preload("res://scripts/core/layers.gd")
 const Explosion = preload("res://scripts/fx/explosion.gd")
 const PixelArt = preload("res://scripts/fx/pixel_art.gd")
+const ArmorFx = preload("res://scripts/fx/armor_fx.gd")
+const Autoloads = preload("res://scripts/core/autoloads.gd")
 
 const SIZES := [Vector2(6, 4), Vector2(10, 8), Vector2(22, 14)]
 const HOMING_RANGE := 72.0
@@ -26,6 +28,9 @@ var homing := false
 ## Ultimate Armor full charge: stronger and leaves a lingering plasma orb.
 var plasma := false
 var small := false
+## IX's ARM armor family (scripts/fx/armor_fx.gd): sets the look of charged shots.
+##   vanguard: crimson claw wave; aero: white-blue wind lances; ultimate: gold / violet bolt.
+var family := "neutral"
 var life := 1.3
 var source = null
 var _t := 0.0
@@ -167,13 +172,16 @@ func _spark_color() -> Color:
 			return GREEN[1]
 		"copy":
 			return VIOLET[1]
+	if level > 0 and family != "neutral":
+		return ArmorFx.energy(family)[1]
 	return CYAN[1] if level == 1 else Color(0, 0, 0, 0)
 
 
 # --- drawing ----------------------------------------------------------------------
 # Pixel sprites built once (PixelArt cache), authored facing right and mirrored for
 # dir < 0. Colour identity: tap shot amber, mid charge cyan, full charge flickers
-# amber / cyan, ECHO rounds green, copy rounds purple / green, breaker ring red.
+# amber / cyan, ECHO rounds green, copy rounds purple / green. Charged shots from an
+# armored ARM take that armor's look (see _draw_armored).
 
 const AMBER := [Color("b4661c"), Color("f0b84a"), Color("ffe08a"), Color("fff6d8")]
 const CYAN := [Color("17869a"), Color("3de0ee"), Color("a6f6fb"), Color("ffffff")]
@@ -191,7 +199,11 @@ func _draw() -> void:
 	if kind == "copy":
 		_draw_copy()
 		return
-	var flick := int(_t * 30.0) % 2
+	# "Reduce flashes": charged shots hold one colour instead of strobing.
+	var flick := int(_t * 30.0) % 2 if Autoloads.flashes() else 0
+	if level > 0 and family != "neutral" and ArmorFx.ENERGY.has(family):
+		_draw_armored(flick)
+		return
 	var key := "buster%d%s" % [level, "s" if small else ""]
 	var tex: Texture2D
 	match level:
@@ -215,7 +227,8 @@ func _draw() -> void:
 		_draw_breaker_ring(5.0 if small else 7.0)
 
 
-## Vanguard ARM breaker: a red ring with four bright teeth turning around the shot.
+## Breaker ring: a red ring with four bright teeth turning around the shot (a breaker
+## shot without an armor look; Vanguard ARM shots show their claw instead).
 func _draw_breaker_ring(r: float) -> void:
 	PixelArt.ring(self, Vector2.ZERO, r - 0.6, r + 0.5, Color(RED[1], 0.55))
 	for i in 4:
@@ -285,7 +298,7 @@ static func _tap_image(is_small: bool) -> Image:
 
 
 ## Mid charge: cyan orb with a flickering comet tail.
-static func _mid_image(is_small: bool, phase: int) -> Image:
+static func _mid_image(is_small: bool, phase: int, tones: Array = CYAN) -> Image:
 	var r := Vector2(3.5, 3.0) if is_small else Vector2(5.0, 4.0)
 	var tail := 5 if is_small else 8
 	var w := int(r.x * 2.0) + tail
@@ -298,13 +311,13 @@ static func _mid_image(is_small: bool, phase: int) -> Image:
 		for y in range(mid - half, mid + half):
 			if k < 0.45 and (x + y + phase) % 2 == 0:
 				continue
-			var col: Color = CYAN[0]
+			var col: Color = tones[0]
 			if k > 0.7 and absf(y - mid + 0.5) < 1.0:
-				col = CYAN[2]
+				col = tones[2]
 			elif k > 0.4:
-				col = CYAN[1]
+				col = tones[1]
 			img.set_pixel(x, y, Color(col, 0.35 + 0.6 * k))
-	PixelArt.glow_ellipse(img, Vector2(tail + r.x, r.y), r, CYAN)
+	PixelArt.glow_ellipse(img, Vector2(tail + r.x, r.y), r, tones)
 	return img
 
 
@@ -340,4 +353,138 @@ static func _full_image(is_small: bool, tones: Array) -> Image:
 			elif d < 2.6 * k:
 				col = tones[1] if p.y > -3.0 * k else tones[2]
 			img.set_pixel(x, y, col)
+	return img
+
+
+# --- armored charged shots ------------------------------------------------------------
+
+const ULT_VIOLET := [Color("5c4296"), Color("8a6cc8"), Color("c8b4f0"), Color("ffffff")]
+
+
+func _draw_armored(flick: int) -> void:
+	var tones: Array = ArmorFx.energy(family)
+	var tex: Texture2D
+	var anchor: Vector2
+	match family:
+		"vanguard":
+			if level == 1:
+				tex = PixelArt.cached("v_mid%d%d" % [int(small), flick], func() -> Image:
+					return _mid_image(small, flick, tones))
+				anchor = Vector2(tex.get_width() - roundf(tex.get_height() * 0.5) - 1.0, roundf(tex.get_height() * 0.5))
+			else:
+				tex = PixelArt.cached("v_claw%d%d" % [int(small), flick], func() -> Image:
+					return _claw_image(small, tones, ArmorFx.accent("vanguard"), flick))
+				anchor = (tex.get_size() * 0.5).floor()
+		"aero":
+			var ang := snappedf(atan2(velocity.y, absf(velocity.x)), 0.01)
+			tex = PixelArt.cached("a_lance%d%d%s" % [level, flick, str(ang)], func() -> Image:
+				return _lance_image(level, ang, tones, ArmorFx.GOLD, flick))
+			anchor = (tex.get_size() * 0.5).floor()
+		_:
+			if level == 1:
+				tex = PixelArt.cached("u_mid%d%d" % [int(small), flick], func() -> Image:
+					return _mid_image(small, flick, tones))
+				anchor = Vector2(tex.get_width() - roundf(tex.get_height() * 0.5) - 1.0, roundf(tex.get_height() * 0.5))
+			else:
+				# Gold bolt with a violet rim; the alternate frame turns violet with a gold core.
+				var gold_bolt := [ULT_VIOLET[0], tones[1], tones[2], tones[3]]
+				var violet_bolt := [Color("3a2860"), ULT_VIOLET[1], ULT_VIOLET[2], tones[2]]
+				tex = PixelArt.cached("u_full%d%d" % [int(small), flick], func() -> Image:
+					return _full_image(small, gold_bolt if flick == 0 else violet_bolt))
+				anchor = (tex.get_size() * 0.5).floor()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(dir, 1))
+	draw_texture(tex, -anchor)
+	if family == "vanguard" and level == 2:
+		# Gold sparks shed behind the claw.
+		for i in 3:
+			var k := fmod(_t * 6.0 + i * 0.33, 1.0)
+			var sp := Vector2(-6.0 - k * 10.0, (i - 1) * 5.0 + sin(_t * 20.0 + i) * 1.5).round()
+			draw_rect(Rect2(sp, Vector2.ONE), Color(ArmorFx.GOLD[2], 1.0 - k))
+	elif family == "ultimate" and level == 2:
+		# Violet plasma motes orbiting the bolt.
+		for i in 2:
+			var m := (Vector2.from_angle(_t * 12.0 + i * PI) * Vector2(9.0, 5.0)).round()
+			draw_rect(Rect2(m, Vector2(1, 1)), ULT_VIOLET[2])
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Vanguard full charge: an energy crescent raking forward with three talon streaks
+## behind it (the claw's slash thrown as a wave). Facing right.
+static func _claw_image(is_small: bool, tones: Array, acc: Array, phase: int) -> Image:
+	var k := 0.7 if is_small else 1.0
+	var w := int(ceil(24.0 * k)) + 1
+	var h := int(ceil(20.0 * k)) + 1
+	var img := PixelArt.blank(w, h)
+	var c := (Vector2(w, h) * 0.5).floor()
+	var mid: Color = tones[1] if phase == 0 else acc[1]
+	for y in h:
+		for x in w:
+			var p := (Vector2(x + 0.5, y + 0.5) - c) / k
+			var outer := p.distance_to(Vector2(-4.0, 0.0))
+			var inner := p.distance_to(Vector2(-8.5, 0.0))
+			var col := Color(0, 0, 0, 0)
+			if outer <= 10.0 and inner > 9.6 and p.x > -4.0:
+				var depth := 10.0 - outer  # 0 at the leading edge
+				if depth < 1.0:
+					col = tones[3] if absf(p.y) < 3.0 else tones[2]
+				elif depth < 2.2:
+					col = tones[2] if p.y < 2.0 else mid
+				else:
+					col = mid if p.y < 4.0 else tones[0]
+			else:
+				# Talon streaks at y = -5, 0, 5, fading towards the tail.
+				for row in [-5.0, 0.0, 5.0]:
+					var sx := 4.0 - absf(row) * 0.5
+					if p.x < sx and p.x > -12.0 and absf(p.y - row - p.x * row * 0.02) < 0.75:
+						var t := (p.x + 12.0) / (sx + 12.0)
+						if t < 0.35 and (x + y + phase) % 2 == 0:
+							continue
+						col = tones[0] if t < 0.4 else (mid if t < 0.8 else tones[2])
+			if col.a > 0.0:
+				img.set_pixel(x, y, col)
+	return img
+
+
+## Aero charged shot: a white-blue wind lance with a gold head, rasterised along
+## `angle` (radians, facing right) so the spread lances stay pixel-clean.
+static func _lance_image(lv: int, angle: float, tones: Array, gold: Array, phase: int) -> Image:
+	# `phase` shifts the dotted tail trail so it shimmers.
+	var length := 18.0 if lv >= 2 else 12.0
+	var half := 2.6 if lv >= 2 else 1.7
+	var head := 5.0 if lv >= 2 else 4.0
+	var d := Vector2.from_angle(angle)
+	var n := Vector2(-d.y, d.x)
+	var w := int(ceil(absf(d.x) * length + half * 2.0)) + 6
+	var h := int(ceil(absf(d.y) * length + half * 2.0)) + 6
+	var img := PixelArt.blank(w, h)
+	var c := (Vector2(w, h) * 0.5).floor()
+	for y in h:
+		for x in w:
+			var q := Vector2(x + 0.5, y + 0.5) - c
+			var u := q.dot(d)
+			var v := absf(q.dot(n))
+			if u > length * 0.5 or u < -length * 0.5 - 3.0:
+				continue
+			var col := Color(0, 0, 0, 0)
+			if u > length * 0.5 - head:
+				var hw := (length * 0.5 - u) / head * (half + 0.6)
+				if v <= hw:
+					col = tones[3] if v < hw * 0.45 else gold[1]
+					if v > hw - 0.8 and q.dot(n) > 0.0:
+						col = gold[0]
+			elif u >= -length * 0.5:
+				var t := (u + length * 0.5) / (length - head)
+				var hw := half * (0.35 + 0.65 * t)
+				if v <= hw:
+					if v < 0.6:
+						col = tones[3] if t > 0.3 else tones[2]
+					elif v < hw - 0.9:
+						col = tones[2]
+					else:
+						col = tones[1] if q.dot(n) < 0.0 else tones[0]
+			elif absf(q.dot(n)) < 0.6 and (int(-u) + phase) % 2 == 0:
+				# Dotted wind trail off the tail.
+				col = Color(tones[2], 0.7)
+			if col.a > 0.0:
+				img.set_pixel(x, y, col)
 	return img

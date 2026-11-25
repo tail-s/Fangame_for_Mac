@@ -24,6 +24,7 @@ const ArmorData = preload("res://scripts/armor/armor_data.gd")
 const PlayerShot = preload("res://scripts/combat/player_shot.gd")
 const WeaponShot = preload("res://scripts/combat/weapon_shot.gd")
 const Shockwave = preload("res://scripts/combat/shockwave.gd")
+const ArmorFx = preload("res://scripts/fx/armor_fx.gd")
 const SpriteVisual = preload("res://scripts/player/sprite_visual.gd")
 const SaberAttack = preload("res://scripts/player/saber_attack.gd")
 const EchoAttack = preload("res://scripts/player/echo_attack.gd")
@@ -363,6 +364,16 @@ func set_frame(new_frame: String) -> void:
 	frame = new_frame
 	_recompute_stats()
 	_sync_ix_visual()
+
+
+## Armor family worn in `slot` ("head" / "body" / "arm" / "leg") for effect colours:
+## "ultimate" in the Ultimate frame, "neutral" for SABLE / ECHO.
+func armor_family(slot: String) -> String:
+	if character != "ix":
+		return "neutral"
+	if frame == "ultimate":
+		return "ultimate"
+	return loadout.get(slot, "neutral")
 
 
 func _sync_ix_visual() -> void:
@@ -865,6 +876,7 @@ func _process_special(delta: float) -> void:
 		if body.is_in_group("enemy") and not _hits.has(body):
 			_hits[body] = true
 			body.take_damage(special_damage + (2 if special_kind == "nova" else 0), special_kind)
+			_special_spark(body)
 
 
 func _special_after_move() -> void:
@@ -878,6 +890,19 @@ func _special_after_move() -> void:
 			wave.dir = d
 			wave.position = position
 			get_parent().add_child(wave)
+
+
+## Hit spark in the special's armor colour where a rush / dive strikes an enemy.
+func _special_spark(body: Node) -> void:
+	if not (body is Node2D) or not is_instance_valid(body):
+		return
+	var fx := Explosion.new()
+	fx.size = 7.0
+	fx.duration = 0.2
+	var fam: String = ArmorFx.SPECIAL_FAMILY.get(special_kind, armor_family("arm"))
+	fx.tint = ArmorFx.energy(fam)[1]
+	get_parent().add_child(fx)
+	fx.global_position = (body.global_position + global_position) * 0.5 + Vector2(0, -12)
 
 
 func _end_special() -> void:
@@ -997,6 +1022,7 @@ func _fire(level: int) -> void:
 		shot.homing = stats.homing and level == 0
 		shot.pierce_all = stats.pierce_all and level == 2
 		shot.plasma = stats.plasma and level == 2
+		shot.family = armor_family("arm")
 		shot.position = origin
 		get_parent().add_child(shot)
 	Autoloads.sfx(["shoot", "shoot_mid", "shoot_full"][level])

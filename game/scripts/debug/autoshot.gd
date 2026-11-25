@@ -16,6 +16,10 @@ var gallery := false
 ## cropped 80x56 around it over its own stage background, mirrored to face right.
 ## These become art/portraits/<id>.png (stage select, boss cut-in).
 var portraits := false
+## --moves=<dir>: armor move look-dev. For each armor family (neutral, vanguard, aero,
+## ultimate) captures charge, charged shot, special (two moments) and a movement move,
+## cropped around IX, into moves_<family>_<move>.png and one moves.png sheet.
+var moves := false
 
 
 func _ready() -> void:
@@ -23,6 +27,8 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	if portraits:
 		_portraits.call_deferred()
+	elif moves:
+		_moves.call_deferred()
 	elif gallery:
 		_gallery.call_deferred()
 	else:
@@ -87,6 +93,118 @@ func _portraits() -> void:
 			main.boss = null
 			main._in_boss = false
 			await _frames(3)
+	get_tree().quit()
+
+
+const MOVE_CELL := Vector2i(112, 80)
+const MOVE_COLS := ["charge", "shot", "special", "special2", "move"]
+
+
+## Crop around the player (offset forward by `ahead` px) into a cell image.
+func _move_crop(ahead := 8.0) -> Image:
+	RenderingServer.force_draw(false)
+	var img := get_viewport().get_texture().get_image()
+	img.convert(Image.FORMAT_RGBA8)
+	var p = main.player
+	var sp: Vector2 = p.get_global_transform_with_canvas().origin
+	var c := Vector2i(int(sp.x + ahead * p.visual_facing()), int(sp.y - 20.0))
+	var r := Rect2i(c - MOVE_CELL / 2, MOVE_CELL)
+	r.position = r.position.clamp(Vector2i.ZERO, img.get_size() - r.size)
+	return img.get_region(r)
+
+
+func _moves() -> void:
+	Game.unlock_all()
+	Game.unlock_ultimate()
+	Game.set_party(["ix"])
+	main.start_stage("training")
+	await _frames(30)
+	main.hud.visible = false
+	var sheet := Image.create(MOVE_CELL.x * MOVE_COLS.size(), MOVE_CELL.y * 4, false, Image.FORMAT_RGBA8)
+	sheet.fill(Color("101b36"))
+	var row := 0
+	for fam in [N, V, A, "ultimate"]:
+		if fam == "ultimate":
+			Game.set_frame("ultimate")
+		else:
+			Game.set_frame("parts")
+			_equip(fam, fam, fam, fam)
+		await _frames(2)
+		var cells := {}
+		# Charge to level 2, then fire.
+		await _teleport(Vector2(600, 270))
+		var p = _p()
+		p.facing = 1
+		p.in_shoot = true
+		await _frames(84)
+		cells["charge"] = _move_crop()
+		p.in_shoot = false
+		await _frames(7)
+		cells["shot"] = _move_crop(40.0)
+		await _frames(40)
+		# Special: two moments (Sky Breaker: wings on the rise, then the dive).
+		if fam != N:
+			await _teleport(Vector2(1500, 96) if fam == A else Vector2(1660, 270))
+			p = _p()
+			p.facing = 1
+			p.set_core(100.0)
+			p.in_special = true
+			if fam == A:
+				await _frames(9)
+				p.in_special = false
+				cells["special"] = _move_crop(0.0)
+				var waited := 0
+				while p.special_phase < 1 and waited < 90:
+					await _frames(1)
+					waited += 1
+				await _frames(4)
+				cells["special2"] = _move_crop(0.0)
+			else:
+				await _frames(6)
+				p.in_special = false
+				cells["special"] = _move_crop(10.0)
+				await _frames(10)
+				cells["special2"] = _move_crop(10.0)
+			_release()
+			await _frames(50)
+		# Movement: Vanguard dash attack, Aero flight, Ultimate air dash, neutral dash.
+		await _teleport(Vector2(600, 270))
+		p = _p()
+		p.facing = 1
+		p.set_core(100.0)
+		p.in_dir = 1
+		if fam == A:
+			p.in_jump = true
+			await _frames(20)
+			p.in_jump = false
+			await _frames(2)
+			p.in_jump = true
+			await _frames(16)
+		elif fam == "ultimate":
+			p.in_jump = true
+			await _frames(10)
+			p.in_dash = true
+			await _frames(7)
+		else:
+			p.in_dash = true
+			await _frames(9)
+		cells["move"] = _move_crop(0.0)
+		_release()
+		await _frames(50)
+		for ci in MOVE_COLS.size():
+			var key: String = MOVE_COLS[ci]
+			if not cells.has(key):
+				continue
+			var cell: Image = cells[key]
+			sheet.blit_rect(cell, Rect2i(Vector2i.ZERO, cell.get_size()), Vector2i(ci * MOVE_CELL.x, row * MOVE_CELL.y))
+			var big := cell.duplicate()
+			big.resize(cell.get_width() * 4, cell.get_height() * 4, Image.INTERPOLATE_NEAREST)
+			big.save_png(out_dir.path_join("moves_%s_%s.png" % [fam, key]))
+		print("moves: ", fam, " ", cells.keys())
+		row += 1
+	sheet.resize(sheet.get_width() * 3, sheet.get_height() * 3, Image.INTERPOLATE_NEAREST)
+	sheet.save_png(out_dir.path_join("moves.png"))
+	Game.set_frame("parts")
 	get_tree().quit()
 
 

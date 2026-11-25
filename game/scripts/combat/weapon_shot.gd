@@ -321,13 +321,14 @@ func _flame(x: float, h: float, i: int) -> void:
 			draw_rect(Rect2(l, y, w, 1), col)
 
 
-## Plasma: translucent orb with a hot core and crackling arcs re-rolled every frame pair.
+## Plasma: translucent violet orb with a gold core and crackling arcs re-rolled every frame pair.
 func _draw_plasma(c: Color) -> void:
 	var r := roundf(9.0 + sin(_t * 30.0) * 2.0)
 	PixelArt.disc(self, Vector2.ZERO, r, Color(c, 0.28))
 	PixelArt.ring(self, Vector2.ZERO, r - 1.0, r, Color(c.lightened(0.35), 0.6))
-	PixelArt.disc(self, Vector2.ZERO, 5.0, Color(c, 0.9))
-	PixelArt.disc(self, Vector2(-1, -1), 3.0, c.lightened(0.6))
+	# Ultimate Armor plasma: violet halo around a gold core (the armor's energy).
+	PixelArt.disc(self, Vector2.ZERO, 5.0, Color(C_SPARK, 0.9))
+	PixelArt.disc(self, Vector2(-1, -1), 3.0, Color("fff0b0"))
 	draw_rect(Rect2(-2, -2, 2, 2), Color.WHITE)
 	var roll := int(_t * 15.0)
 	for i in 3:
