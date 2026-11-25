@@ -17,6 +17,8 @@ const FX := {
 			"tones": ["ffffff", "6fb4ff", "e8b040"], "motif": "lance"},
 	"muzzle_ultimate": {"cell": Vector2i(16, 16), "frames": 3, "fn": "muzzle", "big": true,
 			"tones": ["fff0b0", "f0b84a", "8a6cc8"]},
+	# ECHO's pistols: small green star.
+	"muzzle_echo": {"cell": Vector2i(12, 12), "frames": 3, "fn": "muzzle", "tones": ["eafff2", "5ad19a"]},
 	"wall_spark": {"cell": Vector2i(8, 8), "frames": 3},
 	"charge": {"cell": Vector2i(36, 36), "frames": 4, "tones": ["d8ffff", "3de0ee", "1f8c9a"]},
 	"charge_gold": {"cell": Vector2i(36, 36), "frames": 4, "fn": "charge",

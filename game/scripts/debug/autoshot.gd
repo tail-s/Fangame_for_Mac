@@ -205,7 +205,135 @@ func _moves() -> void:
 	sheet.resize(sheet.get_width() * 3, sheet.get_height() * 3, Image.INTERPOLATE_NEAREST)
 	sheet.save_png(out_dir.path_join("moves.png"))
 	Game.set_frame("parts")
+	await _moves_chars()
 	get_tree().quit()
+
+
+const CHAR_COLS := {
+	"sable": ["flash", "crush", "counter", "air", "dash"],
+	"echo": ["fire", "aim_up", "copy", "turret", "transform"],
+}
+
+
+## SABLE (sword styles, parry counter, air spin, dash slash) and ECHO (rapid fire,
+## aim, copy round, turret form, transform) into moves_chars.png.
+func _moves_chars() -> void:
+	var sheet := Image.create(MOVE_CELL.x * 5, MOVE_CELL.y * 2, false, Image.FORMAT_RGBA8)
+	sheet.fill(Color("101b36"))
+	var rows := [await _moves_sable(), await _moves_echo()]
+	for r in rows.size():
+		var id: String = ["sable", "echo"][r]
+		var cols: Array = CHAR_COLS[id]
+		for ci in cols.size():
+			if not rows[r].has(cols[ci]):
+				continue
+			var cell: Image = rows[r][cols[ci]]
+			sheet.blit_rect(cell, Rect2i(Vector2i.ZERO, cell.get_size()), Vector2i(ci * MOVE_CELL.x, r * MOVE_CELL.y))
+			var big := cell.duplicate()
+			big.resize(cell.get_width() * 4, cell.get_height() * 4, Image.INTERPOLATE_NEAREST)
+			big.save_png(out_dir.path_join("moves_%s_%s.png" % [id, cols[ci]]))
+		print("moves: ", id, " ", rows[r].keys())
+	sheet.resize(sheet.get_width() * 3, sheet.get_height() * 3, Image.INTERPOLATE_NEAREST)
+	sheet.save_png(out_dir.path_join("moves_chars.png"))
+
+
+func _tap(field: String) -> void:
+	var p = _p()
+	p.set(field, true)
+	await _frames(1)
+	p.set(field, false)
+
+
+func _moves_sable() -> Dictionary:
+	Game.set_party(["sable"])
+	main.start_stage("training")
+	await _frames(30)
+	main.hud.visible = false
+	var cells := {}
+	await _teleport(Vector2(600, 270))
+	var p = _p()
+	p.facing = 1
+	p.attack.style = 0
+	await _tap("in_shoot")
+	await _frames(5)
+	cells["flash"] = _move_crop(10.0)
+	await _frames(30)
+	p.attack.style = 1
+	await _saber_combo(1)
+	cells["crush"] = _move_crop(10.0)
+	await _frames(40)
+	p.attack.style = 2
+	p.attack.parry_t = 0.3
+	p.attack.try_parry()
+	await _frames(6)
+	cells["counter"] = _move_crop(10.0)
+	await _frames(40)
+	p.in_jump = true
+	await _frames(10)
+	await _tap("in_shoot")
+	await _frames(7)
+	cells["air"] = _move_crop(0.0)
+	_release()
+	await _frames(40)
+	await _teleport(Vector2(600, 270))
+	p = _p()
+	p.facing = 1
+	p.attack.style = 0
+	p.in_dash = true
+	await _frames(3)
+	await _tap("in_shoot")
+	await _frames(6)
+	cells["dash"] = _move_crop(14.0)
+	_release()
+	await _frames(30)
+	return cells
+
+
+func _moves_echo() -> Dictionary:
+	Game.set_party(["echo"])
+	main.start_stage("training")
+	await _frames(30)
+	main.hud.visible = false
+	var cells := {}
+	await _teleport(Vector2(600, 270))
+	var p = _p()
+	p.facing = 1
+	p.in_shoot = true
+	await _frames(14)
+	cells["fire"] = _move_crop(30.0)
+	_release()
+	await _frames(30)
+	p.in_up = true
+	p.in_dir = 1
+	p.in_shoot = true
+	await _frames(14)
+	cells["aim_up"] = _move_crop(8.0)
+	_release()
+	await _frames(30)
+	await _teleport(Vector2(600, 270))
+	p = _p()
+	p.facing = 1
+	await _tap("in_special")
+	await _frames(10)
+	cells["copy"] = _move_crop(34.0)
+	await _frames(40)
+	p.attack.copy = "turret"
+	await _tap("in_special")
+	await _frames(2)
+	p.in_shoot = true
+	await _frames(12)
+	cells["turret"] = _move_crop(20.0)
+	_release()
+	await _tap("in_special")
+	await _frames(30)
+	p.attack.copy = "mini"
+	await _tap("in_special")
+	await _frames(4)
+	cells["transform"] = _move_crop(0.0)
+	await _frames(30)
+	await _tap("in_special")
+	await _frames(30)
+	return cells
 
 
 func _shot(shot_name: String) -> void:

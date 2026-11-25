@@ -4,7 +4,7 @@ extends Sprite2D
 
 const FRAMES := {"dash_smoke": 4, "land_dust": 4, "muzzle": 3, "muzzle_gold": 3, "wall_spark": 3,
 		"charge": 4, "charge_gold": 4,
-		"muzzle_vanguard": 3, "muzzle_aero": 3, "muzzle_ultimate": 3,
+		"muzzle_vanguard": 3, "muzzle_aero": 3, "muzzle_ultimate": 3, "muzzle_echo": 3,
 		"charge_vanguard1": 4, "charge_vanguard2": 4, "charge_aero1": 4, "charge_aero2": 4,
 		"charge_ultimate1": 4, "charge_ultimate2": 4}
 const DIR := "res://art/fx/"

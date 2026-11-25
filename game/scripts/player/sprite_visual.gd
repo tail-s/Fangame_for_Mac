@@ -20,7 +20,6 @@ const C_LV1 := Color("3de0ee")
 const C_LV2 := Color("f0b84a")
 const C_SABLE := Color("f08a3a")
 const C_ECHO := Color("b78af3")
-const C_BLADE := Color(0.85, 1.0, 1.0)
 const ARM_SPRITES := ["buster", "saber", "pistol"]
 ## SaberAttack.Swing values.
 const SW_NONE := 0
@@ -28,6 +27,19 @@ const SW_COMBO2 := 2
 const SW_COMBO3 := 3
 const SW_AIR := 4
 const SW_DASH := 5
+const SW_WALL := 6
+const SW_COUNTER := 7
+## SABLE slash crescents per swing: [radius, width, longest sweep (rad)].
+const SLASH := {
+	1: [26.0, 9.0, 1.5], 2: [26.0, 9.0, 1.5], 3: [30.0, 12.0, 1.9],
+	4: [23.0, 10.0, 2.4], 6: [26.0, 9.0, 1.5], 7: [32.0, 14.0, 2.2],
+}
+## Per sword style multipliers [radius, width, sweep]: flash thin and long,
+## crush thick and heavy, counter even.
+const STYLE_SHAPE := [[1.0, 0.75, 1.25], [1.08, 1.35, 1.0], [1.0, 1.0, 1.1]]
+## Seconds the counter flash and ECHO's transform burst last.
+const COUNTER_FLASH := 0.14
+const FORM_BURST := 0.3
 ## Transition clips and the base animations they lead into.
 const CLIPS := {"run_start": ["run"], "dash_start": ["dash"], "dash_end": ["idle"], "land": ["idle"]}
 ## Seconds the warp beam falls before the sprite appears.
@@ -62,6 +74,9 @@ var _ghost_clock := 0.0
 ## Time in the current special phase ("<kind><phase>"), for wing / landing effects.
 var _sp_key := ""
 var _sp_t := 0.0
+## ECHO copy form last frame, and time since it changed (transform burst).
+var _echo_form := ""
+var _form_t := 99.0
 ## Set from outside: "warp_in" when a stage starts, "victory" on mission complete.
 var force_anim := "":
 	set(value):
@@ -289,7 +304,11 @@ func _arm_index() -> int:
 ## Blade angle in the facing-right frame (0 = forward, + = downwards).
 func _swing_angle(atk) -> float:
 	var k: float = clampf(atk.swing_t / maxf(atk.swing_len, 0.001), 0.0, 1.0)
-	match int(atk.swing):
+	return _swing_angle_at(int(atk.swing), k)
+
+
+static func _swing_angle_at(swing: int, k: float) -> float:
+	match swing:
 		SW_AIR:
 			return -PI * 0.5 + k * TAU * 1.25
 		SW_DASH:
@@ -319,6 +338,19 @@ func _effects(p, delta: float, prev_anim: String) -> void:
 		if st > _prev_shoot + 0.01:
 			_spawn(ArmorFx.muzzle_strip(_family("arm"), _prev_charge), muzzle(), false, 24.0)
 		_prev_shoot = st
+	elif _arm_name == "pistol":
+		var st: float = p.shoot_pose_timer
+		var atk = _field(p, "attack", null)
+		if st > _prev_shoot + 0.01 and atk != null and not _field(p, "mini", false):
+			var aim: Vector2 = atk.aim()
+			_spawn("muzzle_echo", Vector2(0, -15) + aim * 11.0, false, 26.0)
+		_prev_shoot = st
+		var form: String = atk.form if atk != null else ""
+		if form != _echo_form:
+			_echo_form = form
+			_form_t = 0.0
+		else:
+			_form_t += delta
 	var charge: int = p.charge_level()
 	_prev_charge = charge
 	_aura.visible = charge > 0
@@ -614,14 +646,18 @@ func _draw_front() -> void:
 	if character == "sable" and atk != null:
 		if atk.swing != SW_NONE:
 			_saber_trail(atk)
+			if int(atk.swing) == SW_COUNTER and atk.swing_t < COUNTER_FLASH:
+				_counter_flash(atk)
 		if atk.parry_t > 0.0:
-			var mid := 0.0 if _f > 0 else PI
-			_front.draw_arc(_v(10, -16), 12.0, mid - 1.2, mid + 1.2, 12, Color(C_SABLE, 0.9), 2.0)
-	if character == "echo" and atk != null and not _field(p, "mini", false):
-		if atk.form == "turret":
-			_front.draw_arc(_shoulder(), 13.0, 0.0, TAU, 16, Color(C_ECHO, 0.5), 1.0)
-		elif atk.copy != "":
-			_front.draw_circle(_v(-6, -33), 2.0, C_ECHO)
+			_parry_guard(atk, t)
+	if character == "echo" and atk != null:
+		var mini: bool = _field(p, "mini", false)
+		if not mini and atk.form == "turret":
+			_turret_reticle(t)
+		elif not mini and atk.copy != "":
+			_copy_icon(t)
+		if _form_t < FORM_BURST:
+			_form_burst(Vector2(0, -6) if mini else Vector2(0, -16))
 	match p.special_kind:
 		"overdrive":
 			_draw_claw_ram(t)
@@ -661,20 +697,152 @@ func _draw_nova_core(t: float) -> void:
 	_front.draw_rect(Rect2(c - Vector2(1, 1), Vector2(3, 3)), gold[3])
 
 
-## Arc trailing the blade over the last part of the swing.
+## SABLE's slash: a crescent in the sword style's colours swept behind the blade
+## (dark wide band, mid band, bright rim, white leading edge along the blade).
+## The leading edge snaps to the 16 blade angles so it lines up with the sprite.
 func _saber_trail(atk) -> void:
 	var c := _shoulder()
-	if int(atk.swing) == SW_DASH:
-		_front.draw_line(c + _v(10, 0), c + _v(30, 1), Color(C_BLADE, 0.8), 3.0)
-		_front.draw_line(c + _v(10, 0), c + _v(30, 1), C_SABLE, 1.0)
+	var style := clampi(int(atk.style), 0, 2)
+	var ramp: Array = ArmorFx.saber(style)
+	var swing := int(atk.swing)
+	var k: float = clampf(atk.swing_t / maxf(atk.swing_len, 0.001), 0.0, 1.0)
+	var fade := 1.0 - smoothstep(0.7, 1.0, k)
+	if swing == SW_DASH:
+		_dash_thrust(c, ramp, k, fade)
 		return
-	var a1 := _arm_angle
-	var back := -1.0 if int(atk.swing) == SW_COMBO2 else 1.0
-	var a0 := a1 - back * 1.3
-	for ring in [[25.0, 3.0, Color(C_BLADE, 0.75)], [21.0, 1.0, Color(C_SABLE, 0.6)]]:
-		var pts := PackedVector2Array()
-		for k in 9:
-			var ang := lerpf(a0, a1, k / 8.0)
-			var d := Vector2(cos(ang), sin(ang)) * float(ring[0])
-			pts.append(c + Vector2(d.x * _f, d.y))
-		_front.draw_polyline(pts, ring[2], ring[1])
+	var arc := slash_arc(swing, style, _arm_angle)
+	if arc.is_empty():
+		return
+	var a0: float = arc[0]
+	var a1: float = arc[1]
+	var radius: float = arc[2]
+	var width: float = arc[3]
+	var sweep := a1 - a0
+	_crescent(c, a0, a1, radius, width, Color(ramp[0], 0.5 * fade))
+	_crescent(c, a0 + sweep * 0.25, a1, radius - 0.5, width * 0.65, Color(ramp[1], 0.8 * fade))
+	_crescent(c, a0 + sweep * 0.45, a1, radius, 2.0, Color(ramp[2], 0.95 * fade))
+	var d1 := Vector2(cos(a1) * _f, sin(a1))
+	_front.draw_line((c + d1 * (radius - width)).round(), (c + d1 * radius).round(), Color(ramp[3], fade), 1.0)
+	var tip := c + d1 * radius
+	if style == 1:
+		# Crush: embers thrown off the blade tip, falling.
+		for i in 4:
+			var q := fmod(k * 2.0 + i * 0.25, 1.0)
+			var ang := a1 + (i - 1.5) * 0.5
+			var pos := tip + Vector2(cos(ang) * _f, sin(ang)) * q * 9.0 + Vector2(0, q * q * 6.0)
+			_front.draw_rect(Rect2(pos.round(), Vector2.ONE), Color(ramp[2] if q < 0.5 else ramp[0], fade))
+	elif style == 0 and Autoloads.flashes() and int(k * 12.0) % 2 == 0:
+		# Flash: a glint on the blade tip.
+		var g0 := tip.round()
+		_front.draw_line(g0 - Vector2(2, 0), g0 + Vector2(2, 0), ramp[3], 1.0)
+		_front.draw_line(g0 - Vector2(0, 2), g0 + Vector2(0, 2), ramp[3], 1.0)
+
+
+## [a0, a1, radius, width] of a slash crescent for the current blade angle, or []
+## while the sweep is still too short (under 0.75 rad). a1 snaps to the 16 blade sprite angles.
+static func slash_arc(swing: int, style: int, blade_angle: float) -> Array:
+	var g: Array = SLASH.get(swing, SLASH[1])
+	var m: Array = STYLE_SHAPE[clampi(style, 0, 2)]
+	var step := TAU / 16.0
+	var a1 := roundf(blade_angle / step) * step
+	var dir := -1.0 if swing == SW_COMBO2 else 1.0
+	var sweep := minf(g[2] * m[2], absf(a1 - _swing_angle_at(swing, 0.0)))
+	# A crescent shorter than ~45 degrees reads as a flag on the blade: wait for the sweep.
+	if sweep < 0.75:
+		return []
+	return [a1 - dir * sweep, a1, g[0] * m[0], g[1] * m[1]]
+
+
+## Tapered band from angle a0 (thin tail) to a1 (full width at the blade), as a
+## polygon around centre c, mirrored for facing f.
+static func crescent_points(c: Vector2, a0: float, a1: float, r: float, w: float, f: int) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var inner := PackedVector2Array()
+	var n := 10
+	for i in n + 1:
+		var t := float(i) / n
+		var a := lerpf(a0, a1, t)
+		var d := Vector2(cos(a) * f, sin(a))
+		pts.append(c + d * r)
+		inner.append(c + d * (r - maxf(w * (0.2 + 0.8 * t), 0.8)))
+	inner.reverse()
+	pts.append_array(inner)
+	return pts
+
+
+func _crescent(c: Vector2, a0: float, a1: float, r: float, w: float, col: Color) -> void:
+	_front.draw_colored_polygon(crescent_points(c, a0, a1, r, w, _f), col)
+
+
+## Dash slash: a lunging thrust of light ahead of the blade, with speed streaks.
+func _dash_thrust(c: Vector2, ramp: Array, k: float, fade: float) -> void:
+	var reach := 18.0 + 16.0 * minf(k * 3.0, 1.0)
+	var base := c + _v(6, 0)
+	var tip := c + _v(6.0 + reach, 0)
+	_front.draw_colored_polygon(PackedVector2Array([base + Vector2(0, -3), tip, base + Vector2(0, 3)]),
+			Color(ramp[1], 0.6 * fade))
+	_front.draw_colored_polygon(PackedVector2Array([base + Vector2(0, -1.5), tip, base + Vector2(0, 1.5)]),
+			Color(ramp[2], 0.9 * fade))
+	_front.draw_line(base.round(), tip.round(), Color(ramp[3], fade), 1.0)
+	for i in 3:
+		var y := -6.0 + i * 6.0
+		_front.draw_line(c + _v(-4.0 - i * 3.0, y), c + _v(-16.0 - i * 4.0, y), Color(ramp[1], 0.5 * fade), 1.0)
+
+
+## Parry window: a guard arc in the style colour with a glint running along it.
+func _parry_guard(atk, t: float) -> void:
+	var ramp: Array = ArmorFx.saber(int(atk.style))
+	var mid := 0.0 if _f > 0 else PI
+	var c := _v(10, -16)
+	_front.draw_arc(c, 12.0, mid - 1.2, mid + 1.2, 12, Color(ramp[1], 0.85), 2.0)
+	_front.draw_arc(c, 10.0, mid - 0.9, mid + 0.9, 10, Color(ramp[2], 0.6), 1.0)
+	var g := c + Vector2.from_angle(mid + sin(t * 18.0) * 1.1) * 12.0
+	_front.draw_rect(Rect2(g.round() - Vector2(1, 1), Vector2(2, 2)), ramp[3])
+
+
+## Successful parry: a star burst and a ring where the blow was caught.
+func _counter_flash(atk) -> void:
+	var k: float = atk.swing_t / COUNTER_FLASH
+	var bright := Autoloads.flashes()
+	var c := _v(12, -16).round()
+	var r := 4.0 + k * 10.0
+	var core: Color = Color.WHITE if bright else ArmorFx.GOLD[2]
+	var a := (1.0 - k) * (1.0 if bright else 0.6)
+	for i in 8:
+		var d := Vector2.from_angle(i * PI / 4.0)
+		var length := r if i % 2 == 0 else r * 0.55
+		_front.draw_line(c, c + d * length, Color(core if i % 2 == 0 else ArmorFx.GOLD[1], a), 1.0)
+	_front.draw_arc(c, 6.0 + k * 14.0, 0.0, TAU, 16, Color(ArmorFx.saber(int(atk.style))[2], a), 1.0)
+
+
+## ECHO turret form: four target brackets turning around the pistol.
+func _turret_reticle(t: float) -> void:
+	var c := _shoulder()
+	for i in 4:
+		var ang := t * 1.5 + i * PI * 0.5
+		var p0 := c + Vector2.from_angle(ang) * 12.0
+		_front.draw_line(p0, p0 + Vector2.from_angle(ang + PI * 0.5) * 3.0, ArmorFx.ECHO_VIOLET[1], 1.0)
+		_front.draw_line(p0, p0 - Vector2.from_angle(ang) * 3.0, ArmorFx.ECHO_VIOLET[1], 1.0)
+	_front.draw_rect(Rect2(c.round() - Vector2(1, 1), Vector2(2, 2)), ArmorFx.ECHO_GREEN[2])
+
+
+## ECHO holding copy data: a small violet data diamond bobbing over the head.
+func _copy_icon(t: float) -> void:
+	var c := (_v(-6, -34) + Vector2(0, roundf(sin(t * 4.0)))).round()
+	_front.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -3), c + Vector2(2, 0), c + Vector2(0, 3),
+			c + Vector2(-2, 0)]), ArmorFx.ECHO_VIOLET[1])
+	_front.draw_rect(Rect2(c, Vector2.ONE), ArmorFx.ECHO_VIOLET[3])
+
+
+## ECHO transform (copy form on / off): an expanding data diamond and flying bits.
+func _form_burst(c: Vector2) -> void:
+	var k := _form_t / FORM_BURST
+	var r := 4.0 + k * 18.0
+	var a := 1.0 - k
+	var ring := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0),
+			c + Vector2(0, -r)])
+	_front.draw_polyline(ring, Color(ArmorFx.ECHO_VIOLET[2], a), 1.0)
+	for i in 8:
+		var d := Vector2.from_angle(i * PI / 4.0 + 0.4)
+		var col: Color = ArmorFx.ECHO_GREEN[2] if i % 2 == 0 else ArmorFx.ECHO_VIOLET[1]
+		_front.draw_rect(Rect2((c + d * r * 0.8).round(), Vector2.ONE), Color(col, a))

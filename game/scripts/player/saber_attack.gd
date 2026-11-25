@@ -10,6 +10,8 @@ extends RefCounted
 const Autoloads = preload("res://scripts/core/autoloads.gd")
 
 const Layers = preload("res://scripts/core/layers.gd")
+const Explosion = preload("res://scripts/fx/explosion.gd")
+const ArmorFx = preload("res://scripts/fx/armor_fx.gd")
 
 enum Swing { NONE, COMBO1, COMBO2, COMBO3, AIR, DASH, WALL, COUNTER }
 
@@ -164,9 +166,28 @@ func _apply_hits() -> void:
 			_hits[b] = true
 			b.take_damage(damage(), "saber")
 			p.register_hit()
+			_spark(ArmorFx.saber(style)[1], 7.0)
+			if style == 1:
+				_spark(ArmorFx.saber(style)[2], 5.0, Vector2(0, -6))
 		elif b.is_in_group("breakable") and style == 1 and swing == Swing.COMBO3:
 			_hits[b] = true
 			b.break_wall()
 	for a in hitbox.get_overlapping_areas():
 		if a.is_in_group("enemy_shot"):
+			var fresh: bool = not a.is_queued_for_deletion()
 			a.hit()
+			if fresh:
+				_spark(Color.WHITE, 5.0, a.global_position - hitbox.global_position)
+
+
+## Hit spark in the sword style's colour at the slash (visual only).
+func _spark(tint: Color, size: float, offset := Vector2.ZERO) -> void:
+	var host: Node = p.get_parent()
+	if host == null:
+		return
+	var fx := Explosion.new()
+	fx.size = size
+	fx.duration = 0.18
+	fx.tint = tint
+	host.add_child(fx)
+	fx.global_position = hitbox.global_position + offset

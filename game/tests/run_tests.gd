@@ -14,6 +14,8 @@ const PlayerShot = preload("res://scripts/combat/player_shot.gd")
 const ArmorFx = preload("res://scripts/fx/armor_fx.gd")
 const Afterimage = preload("res://scripts/fx/afterimage.gd")
 const SpriteFx = preload("res://scripts/fx/sprite_fx.gd")
+const SpriteVisual = preload("res://scripts/player/sprite_visual.gd")
+const Explosion = preload("res://scripts/fx/explosion.gd")
 
 const FLOOR := Rect2(-400, 100, 1200, 32)
 const N := "neutral"
@@ -65,6 +67,8 @@ func _run_all() -> void:
 	await test_saber_styles()
 	await test_saber_crush_breaks_wall()
 	await test_parry()
+	test_slash_crescents()
+	await test_saber_sparks()
 	await test_echo_aim_and_hover()
 	await test_echo_copy_mini()
 	await test_weapons()
@@ -382,7 +386,9 @@ func test_armor_fx_strips() -> void:
 			for strip in [ArmorFx.charge_strip(fam, lv), ArmorFx.muzzle_strip(fam, lv)]:
 				if not ResourceLoader.exists("res://art/fx/%s.png" % strip) or not SpriteFx.FRAMES.has(strip):
 					missing.append(strip)
-	_check(missing.is_empty(), "every armor charge / muzzle strip is baked and registered %s" % str(missing))
+	if not ResourceLoader.exists("res://art/fx/muzzle_echo.png") or not SpriteFx.FRAMES.has("muzzle_echo"):
+		missing.append("muzzle_echo")
+	_check(missing.is_empty(), "every armor / ECHO charge and muzzle strip is baked and registered %s" % str(missing))
 
 
 func test_prism_stage() -> void:
@@ -520,6 +526,59 @@ func test_saber_styles() -> void:
 		totals.append(99 - foe.hp)
 		await _free(w)
 	_check(totals == [4, 7, 4], "saber 3-hit combo damage by style (flash, crush, counter) = %s" % str(totals))
+
+
+## Every SABLE slash crescent (all swings, styles, both facings, the whole swing) is a
+## polygon the renderer can triangulate, and grows with the swing.
+func test_slash_crescents() -> void:
+	var bad := []
+	var drawn := 0
+	for swing in SpriteVisual.SLASH:
+		for style in 3:
+			for f in [1, -1]:
+				for i in 21:
+					var arc := SpriteVisual.slash_arc(swing, style, SpriteVisual._swing_angle_at(swing, i / 20.0))
+					if arc.is_empty():
+						continue
+					drawn += 1
+					for w in [arc[3], arc[3] * 0.65, 2.0]:
+						var pts := SpriteVisual.crescent_points(Vector2(4, -20), arc[0], arc[1], arc[2], w, f)
+						if Geometry2D.triangulate_polygon(pts).is_empty():
+							bad.append([swing, style, f, i])
+	_check(bad.is_empty() and drawn > 200, "SABLE slash crescents triangulate (%d arcs, bad %s)" % [drawn, str(bad.slice(0, 3))])
+	var thin: Array = SpriteVisual.slash_arc(1, 0, SpriteVisual._swing_angle_at(1, 1.0))
+	var heavy: Array = SpriteVisual.slash_arc(1, 1, SpriteVisual._swing_angle_at(1, 1.0))
+	_check(heavy[3] > thin[3] * 1.5, "crush style slashes are heavier than flash (%.1f vs %.1f px)" % [heavy[3], thin[3]])
+
+
+## A saber hit throws a spark in the sword style's colour.
+func test_saber_sparks() -> void:
+	var tints := []
+	for style in 3:
+		var w := _world([FLOOR])
+		var p = await _grounded(w)
+		p.setup_party(["sable"], 16)
+		p.attack.style = style
+		var foe = Walker.new()
+		foe.max_hp = 99
+		foe.speed = 0.0
+		foe.position = Vector2(18, 100)
+		w.add_child(foe)
+		await _frames(3)
+		p.in_shoot = true
+		await _frames(1)
+		p.in_shoot = false
+		var found := false
+		for i in 20:
+			await physics_frame
+			for c in w.get_children():
+				if c is Explosion and c.tint.is_equal_approx(ArmorFx.saber(style)[1]):
+					found = true
+			if found:
+				break
+		tints.append(found)
+		await _free(w)
+	_check(tints == [true, true, true], "saber hits spark in the style colour (flash, crush, counter) %s" % str(tints))
 
 
 func test_saber_crush_breaks_wall() -> void:

@@ -1,5 +1,6 @@
 extends RefCounted
-## Armor-family colours for move effects (charge, shots, specials, dash, flight).
+## Move-effect colours: IX's armor families (charge, shots, specials, dash, flight),
+## SABLE's sword styles and ECHO's rounds.
 ## They follow the sprite kit (tools/sprites/ix_kit.gd PAL: armor, trim, energy r/t):
 ##   neutral   cyan energy, amber full charge (the original identity)
 ##   vanguard  crimson armor, magenta energy, gold trim   (brawler: claw, rush)
@@ -29,6 +30,18 @@ const GHOST := {
 }
 ## Gold trim ramp (Vanguard / Aero trim, Ultimate energy), for sparks and lance heads.
 const GOLD := [Color("8a5a10"), Color("e8b040"), Color("fff0b0"), Color("ffffff")]
+## SABLE's saber, one ramp per sword style (SaberAttack.style):
+##   0 섬광류 flash   cyan-white, thin and long
+##   1 파쇄류 crush   ember orange, thick and heavy
+##   2 반격류 counter moon violet, calm with a bright edge
+const SABER := [
+	[Color("17869a"), Color("3de0ee"), Color("b8fbff"), Color("ffffff")],
+	[Color("8a2a10"), Color("e0582e"), Color("f8a850"), Color("fff0c8")],
+	[Color("3a2a7a"), Color("8a6cd8"), Color("d0c4ff"), Color("ffffff")],
+]
+## ECHO: green rounds, violet copy data.
+const ECHO_GREEN := [Color("2a8c60"), Color("5ad19a"), Color("b8f4d7"), Color("ffffff")]
+const ECHO_VIOLET := [Color("7a52c4"), Color("b78af3"), Color("e2d2ff"), Color("ffffff")]
 ## Which family a full-set special belongs to.
 const SPECIAL_FAMILY := {"overdrive": "vanguard", "skybreaker": "aero", "nova": "ultimate"}
 
@@ -69,3 +82,8 @@ static func muzzle_strip(family: String, level: int) -> String:
 	if family == "neutral" or family == "":
 		return "muzzle_gold"
 	return "muzzle_" + family
+
+
+## Ramp of SABLE's sword style (clamped to the three styles).
+static func saber(style: int) -> Array:
+	return SABER[clampi(style, 0, SABER.size() - 1)]

@@ -242,9 +242,11 @@ func _draw_echo() -> void:
 		var img := PixelArt.blank(5, 5)
 		PixelArt.glow_ellipse(img, Vector2(2.5, 2.5), Vector2(2.6, 2.6), GREEN)
 		return img)
+	# Tracer: a fading streak behind the round, light near the head.
 	var back := -velocity.normalized()
-	draw_rect(Rect2((back * 6.0).round(), Vector2(1, 1)), Color(GREEN[0], 0.6))
-	draw_rect(Rect2((back * 4.0).round(), Vector2(1, 1)), Color(GREEN[1], 0.75))
+	for i in range(1, 7):
+		var col: Color = GREEN[2] if i < 3 else (GREEN[1] if i < 5 else GREEN[0])
+		draw_rect(Rect2((back * (i + 1.5)).round(), Vector2(1, 1)), Color(col, 0.95 - i * 0.12))
 	draw_texture(tex, Vector2(-2, -2))
 
 
@@ -274,6 +276,12 @@ func _draw_copy() -> void:
 	draw_texture(tex, Vector2(-5, -5))
 	var g := (Vector2.from_angle(_t * 14.0) * 4.5).round()
 	draw_rect(Rect2(g, Vector2(1, 1)), Color.WHITE)
+	# Data bits trailing the copy round, alternating violet / green.
+	var back := -velocity.normalized()
+	for i in 3:
+		var off := Vector2(0, -1.0 if (i + int(_t * 12.0)) % 2 == 0 else 1.0)
+		draw_rect(Rect2((back * (8.0 + i * 3.0) + off).round(), Vector2(1, 1)),
+				Color((VIOLET if i % 2 == 0 else GREEN)[2], 0.9 - i * 0.25))
 
 
 ## Tap shot: amber pellet with a short glow trail.
