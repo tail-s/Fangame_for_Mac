@@ -90,20 +90,23 @@ func _st(grid: Array, at: Vector2, anchor: Vector2i, opts := {}) -> void:
 
 func _head(j: Dictionary, v: String) -> void:
 	var c: Vector2 = (j.head as Vector2).round()
+	# Every armor keeps the open face (GDD 4-2); the helmet shell changes colour
+	# through the palette and gains the family's crest, horn or fins.
 	match SHAPE[v].head:
-		"neutral":
-			_st(Kit.HEAD_FIN, c + Vector2(-3, -5), Vector2i(5, 4))
-			_st(Kit.HEAD, c, Kit.HEAD_ANCHOR)
 		"aero":
-			_st(Kit.HEAD_KNIGHT_FINS, c + Vector2(-1, -1), Vector2i(10, 4))
-			_st(Kit.HEAD_KNIGHT, c, Vector2i(7, 6))
+			_st(Kit.HEAD_KNIGHT_FINS, c + Vector2(-2, -6), Vector2i(10, 4))
+			_st(Kit.HEAD, c, Kit.HEAD_ANCHOR)
+			_st(Kit.HEAD_VFIN, c + Vector2(3, -6), Vector2i(7, 6))
 		"vanguard":
-			_st(Kit.HEAD_BRAWLER, c, Vector2i(7, 5))
-			_st(Kit.HEAD_HORN_SWEEP, c + Vector2(6, -3), Vector2i(12, 5))
+			_st(Kit.HEAD, c, Kit.HEAD_ANCHOR)
+			_st(Kit.HEAD_HORN_SWEEP, c + Vector2(4, -7), Vector2i(12, 5))
 		"ultimate":
-			_st(Kit.HEAD_KNIGHT_FINS, c + Vector2(-1, -1), Vector2i(10, 4))
-			_st(Kit.HEAD_KNIGHT, c, Vector2i(7, 6))
-			_st(Kit.HEAD_HORN_SWEEP, c + Vector2(6, -4), Vector2i(12, 5))
+			_st(Kit.HEAD_KNIGHT_FINS, c + Vector2(-2, -6), Vector2i(10, 4))
+			_st(Kit.HEAD, c, Kit.HEAD_ANCHOR)
+			_st(Kit.HEAD_HORN_SWEEP, c + Vector2(4, -8), Vector2i(12, 5))
+		_:
+			_st(Kit.HEAD, c, Kit.HEAD_ANCHOR)
+			_st(Kit.HEAD_VFIN, c + Vector2(3, -6), Vector2i(7, 6))
 
 
 func _body(j: Dictionary, v: String) -> void:

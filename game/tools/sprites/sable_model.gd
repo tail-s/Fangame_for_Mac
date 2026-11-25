@@ -1,7 +1,7 @@
 extends RefCounted
 ## SABLE — original design: slim gunmetal swordsman, orange accents, sharp cyan
-## eyes under a pointed brim with a mask over the lower face, long swept-back
-## blade crest, coat-tail plates and a saber worn across the back. The swinging arm + blade is its own sprite
+## eyes in an open X6-era face, silver bangs and a long silver ponytail, small
+## orange crest, coat-tail plates and a saber worn across the back. The swinging arm + blade is its own sprite
 ## (16 angles) so slashes rotate cleanly.
 
 const Raster = preload("res://tools/sprites/raster.gd")
@@ -19,29 +19,46 @@ const VISOR := Color("3de0ee")
 const SUIT := Color("2a3156")
 const MASK := Color("343c63")
 const BLADE := Color("c9fbff")
+const HAIR := Color("dde3f2")
 
 const ANGLES := 16
 
-## Hand-drawn head (32-bit style), facing right; anchor = head centre (7, 6).
-##   1-5 steel  p q s orange  k l m mask  g skin  e i o eye (lash, iris, glint)
+## Hand-drawn head (X6-era 3/4 view), facing right; anchor (8, 10) at the head joint.
+## Gundam-style brow: the orange rim drops in a V to a gem over the nose, so the
+## sharp cyan eyes sit under a scowl; silver bangs, orange ear sensor, an orange
+## blade crest (CREST); the ponytail is on the back layer.
+##   1-5 steel  p q s orange  b c hair  f g h skin  e i o eye (lash, iris, glint)
 const HEAD := [
-	".......pqs.....",
-	"...12334pq45...",
-	"..123344444455.",
-	".12233333333345",
-	"11222222ghhhhh.",
-	"11222q22geegeg.",
-	"1122qs22goigig.",
-	"11222q22klllllm",
-	"11222222kllllk.",
-	".1122222kkllk..",
-	"..11122kkkk....",
-	"...111.........",
+	".....11233445...",
+	"...11233344445..",
+	"..1122333444455.",
+	".112233344444445",
+	"1122333q444s44q5",
+	"1123322bqq4s4qg4",
+	"12pqp32beeqsqeg4",
+	"13qsq32cioegeig3",
+	"12pqp32biigggih3",
+	"1123322fgggghfg2",
+	"1111112fggggggf.",
+	".111111fggffgf..",
+	"........fgggf...",
+]
+## Blade crest: a single orange blade rising from the brow gem, swept back like a
+## sword tip above the helmet (anchor = root on the gem).
+const CREST := [
+	"ss......",
+	"sqq.....",
+	".pqq....",
+	"..pqq...",
+	"...pqq..",
+	"....pqq.",
+	".....pqs",
 ]
 const HEAD_PAL := {"1": Color("3a4268"), "2": Color("56608a"), "3": Color("7f8ab8"), "4": Color("a3aed6"),
 		"5": Color("d6ddf2"), "p": Color("a8501c"), "q": Color("f08a3a"), "s": Color("ffc28a"),
 		"k": Color("1e2240"), "l": Color("2c3354"), "m": Color("3c4570"),
-		"g": Color("e8b48c"), "h": Color("ffd8b8"), "e": Color("141428"), "i": Color("3de0ee"), "o": Color("ffffff")}
+		"f": Color("c48a6a"), "g": Color("e8b48c"), "h": Color("ffd8b8"), "e": Color("141428"), "i": Color("3de0ee"),
+		"o": Color("ffffff"), "b": Color("b7c0da"), "c": Color("eef2ff")}
 
 var _r: Raster
 var _far := false
@@ -84,6 +101,7 @@ func draw(r: Raster, j: Dictionary, layer: String, _variant: String) -> void:
 
 
 func _back(j: Dictionary) -> void:
+	_hair(j)
 	var p: Vector2 = j.pelvis
 	var a: float = j.lean
 	# Saber across the back: hilt over the far shoulder, sheath down to the hip.
@@ -102,14 +120,25 @@ func _back(j: Dictionary) -> void:
 				root + dir * (len + 1.0), root + dir * len + nrm * 1.4]), ramp(PLATE if k == 0 else ARMOR))
 
 
-func _head(j: Dictionary) -> void:
+## Long silver ponytail from the back of the helmet to the waist; it trails further
+## back the more SABLE leans into a run or dash.
+func _hair(j: Dictionary) -> void:
 	var c: Vector2 = j.head
-	var a: float = j.head_angle * 0.6
-	# Long swept-back crest (two blades) behind the helmet.
-	_r.poly(_pts(c, a, [Vector2(-1.5, -5.0), Vector2(-13.0, -7.2), Vector2(-10.8, -5.0), Vector2(-3.5, -2.0)]), ramp(ACCENT))
-	_r.poly(_pts(c, a, [Vector2(-3.0, -2.5), Vector2(-11.0, -2.6), Vector2(-9.0, -0.8), Vector2(-4.0, 0.5)]), ramp(ACCENT.darkened(0.15)))
-	# Hand-drawn helmet: pointed back, orange crest stub, cyan eye slit, mask.
-	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(7, 6), {"line": ARMOR.darkened(0.6)})
+	var a: float = j.head_angle * 0.6 + clampf(j.lean, -0.2, 0.9) * 0.9
+	# Bushy outline with jagged ends, then two darker inner strands for depth.
+	_r.poly(_pts(c, a, [Vector2(-3, -9), Vector2(-9, -8), Vector2(-13, -3), Vector2(-15, 3), Vector2(-17, 10),
+			Vector2(-14, 8), Vector2(-15, 16), Vector2(-12, 12), Vector2(-11, 21), Vector2(-9, 13), Vector2(-8, 6),
+			Vector2(-6, 0), Vector2(-5, -4)]), ramp(HAIR))
+	_r.poly(_pts(c, a, [Vector2(-8, -5), Vector2(-11, -1), Vector2(-13, 6), Vector2(-13, 11), Vector2(-11, 5),
+			Vector2(-9, -1)]), ramp(HAIR.darkened(0.3)), {"line": false})
+	_r.poly(_pts(c, a, [Vector2(-10, 4), Vector2(-11, 10), Vector2(-11, 16), Vector2(-10, 10)]),
+			ramp(HAIR.darkened(0.3)), {"line": false})
+
+
+func _head(j: Dictionary) -> void:
+	var c: Vector2 = (j.head as Vector2).round()
+	_r.stamp(HEAD, HEAD_PAL, c, Vector2i(8, 10), {"line": ARMOR.darkened(0.6)})
+	_r.stamp(CREST, HEAD_PAL, c + Vector2(3, -6), Vector2i(6, 6), {"line": ARMOR.darkened(0.6)})
 
 
 func _body(j: Dictionary) -> void:

@@ -8,11 +8,11 @@ const Kit = preload("res://tools/sprites/ix_kit.gd")
 
 func _init() -> void:
 	var out: String = OS.get_cmdline_user_args()[0]
-	var parts := [Kit.HEAD, Kit.HEAD_FIN, Kit.HEAD_HORN, Kit.HEAD_WINGS, Kit.TORSO, Kit.TORSO_CHEVRON,
-			Kit.TORSO_PACK, Kit.BOOT, Kit.BOOT_DOWN, Kit.BOOT_THRUSTER, Kit.BOOT_FIN, Kit.PAD,
-			Kit.PAD_VANGUARD, Kit.PAD_AERO, Kit.BUSTER, Kit.BUSTER_VANGUARD, Kit.BUSTER_AERO]
+	var parts := [Kit.HEAD, Kit.HEAD_VFIN, Kit.HEAD_KNIGHT_FINS, Kit.HEAD_HORN_SWEEP, Kit.TORSO,
+			Kit.TORSO_KNIGHT, Kit.TORSO_BRAWLER, Kit.TORSO_PACK, Kit.BOOT, Kit.BOOT_DOWN, Kit.BOOT_BRAWLER,
+			Kit.BOOT_KNIGHT, Kit.PAD, Kit.PAD_BRAWLER, Kit.PAD_KNIGHT, Kit.BUSTER, Kit.BUSTER_LANCE]
 	var variants := ["neutral", "vanguard", "aero", "ultimate"]
-	var cell := Vector2i(24, 16)
+	var cell := Vector2i(24, 18)
 	var sheet := Image.create(cell.x * parts.size(), cell.y * variants.size(), false, Image.FORMAT_RGBA8)
 	sheet.fill(Color("1c2a48"))
 	for vi in variants.size():

@@ -5,7 +5,7 @@ extends RefCounted
 ##   k l m  undersuit (dark -> light)         v w x  visor (dark, base, glint)
 ##   f g h  face (shadow, base, light)        y z    core gem (base, glint)
 ##   e i o  eye (lash line, iris, glint)     a b c  silver (claw arm)
-##   r t    energy glow (base, bright)       E G    mecha eye glow (base, bright)
+##   r t    energy glow (base, bright, also the brow gem)
 ## Each armor family has its own grid for every part (helm, chest, pauldron, boot,
 ## buster), so the silhouette changes with the armor, not just the palette; see
 ## ix_model.gd for how they are placed.
@@ -30,49 +30,35 @@ const COMMON := {"k": "1a2242", "l": "2e3b64", "m": "4a5a8a", "v": "a3681a", "w"
 
 # --- head (anchor = head centre) --------------------------------------------------------
 
-const HEAD_ANCHOR := Vector2i(7, 6)
-## Swept helmet (3/4 view, facing right): crown peaks toward the front, gold brow
-## band ending in a forward point, accent sensor on the side plate, jaw guard
-## wrapping forward under the face, both eyes visible.
+const HEAD_ANCHOR := Vector2i(8, 10)
+## X6-era head (3/4 view, facing right), Gundam-style: the brow rim drops in a V
+## from both temples to a teal energy gem over the nose, so the eyes sit under
+## a scowl; round ear sensor on the side, cheek guard, stern mouth.
 const HEAD := [
-	"......123455...",
-	"....1233444455.",
-	"..112334444445.",
-	".11223344444445",
-	"1122333vwwwwwwx",
-	"11222222fhhhhh.",
-	"1122qs22geegeh.",
-	"1122pq22goigih.",
-	"11122222giigig.",
-	".11122223fggg..",
-	"..1111222334f..",
-	"...1111122.....",
+	".....11233445...",
+	"...11233344445..",
+	"..1122333444455.",
+	".112233344444445",
+	"1122333q444r44q5",
+	"1123322fqq4r4qg4",
+	"12pqp32feeqtqeg4",
+	"13qsq32fioegeig3",
+	"12pqp32fiigggih3",
+	"1123322fgggghfg2",
+	"1111112fggggggf.",
+	".111111fggffgf..",
+	"........fgggf...",
 ]
-## Neutral: swept fin off the back of the helmet.
-const HEAD_FIN := [
-	"q.......",
-	"pq......",
-	".pqq....",
-	"..pqqs..",
-	"...pqq..",
-]
-
-## White knight (Aero): closed mecha face — dark visor with glowing eyes, white
-## face plate and chin, gold brow band and forward spike. Gold fins sweep back
-## (HEAD_WINGS, drawn behind).
-const HEAD_KNIGHT := [
-	".....1234455....",
-	"...12334444455..",
-	"..11233444444455",
-	".1122334444445qs",
-	"1122233pqqqqqqs.",
-	"11222222qkkkkkk.",
-	"1122pq22qkGGkG..",
-	"1122pq223qk4445.",
-	"112pqq2223q445..",
-	".112pq2221qq3...",
-	"..1112222kk.....",
-	"...11111........",
+## Gundam-style V-fin rising from the brow gem above the helmet: the near blade
+## longer, the far one foreshortened (anchor = its root on the gem).
+const HEAD_VFIN := [
+	"ss..........s",
+	"qqs........sq",
+	".pqqs.....sqp",
+	"..ppqs...sqp.",
+	"....pqs.sqp..",
+	".....pqrqp...",
+	"......prp....",
 ]
 ## Knight fins: two long gold blades swept back from the temple (drawn behind).
 const HEAD_KNIGHT_FINS := [
@@ -84,21 +70,6 @@ const HEAD_KNIGHT_FINS := [
 	"pqqs....pqq.",
 	".ppqqqs.....",
 	"...ppqqq....",
-]
-## Crimson brawler (Vanguard): low helm, dark face with glowing eyes, gold mouth
-## guard; the big gold horn (HEAD_HORN_SWEEP) is stamped over it.
-const HEAD_BRAWLER := [
-	"......12344.....",
-	"....1233444455..",
-	"..11233444444445",
-	".112233333333345",
-	"11222222kkkkkkk.",
-	"1122rt22kGGkGk..",
-	"11222222kkkkkk..",
-	"11222222pqqqqqs.",
-	"11122222pqqqqs..",
-	".1111222pppp....",
-	"...1111111......",
 ]
 ## Big gold horn: root on the brow, blade sweeping up and back over the helm.
 const HEAD_HORN_SWEEP := [

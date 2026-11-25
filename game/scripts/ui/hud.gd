@@ -31,7 +31,7 @@ const R_BOSS := [Color("6c48b4"), Color("b78af3"), Color("e8d9ff")]
 const ICON := Vector2i(17, 15)
 ## Character badge: top-left of the ICON window on head.png, idle frame 0.
 ## IX's row follows the equipped helmet (sheet.json variants order).
-const HEAD_CROP := {"ix": Vector2i(24, 15), "echo": Vector2i(25, 18), "sable": Vector2i(25, 15)}
+const HEAD_CROP := {"ix": Vector2i(24, 12), "echo": Vector2i(24, 14), "sable": Vector2i(24, 12)}
 const HEAD_ROWS := ["neutral", "vanguard", "aero", "ultimate"]
 const SHEET_CELL_H := 56
 ## Boss emblem: [top-left of the ICON window on art/portraits/<id>.png, mirror].

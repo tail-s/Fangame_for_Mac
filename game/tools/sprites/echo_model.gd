@@ -1,7 +1,7 @@
 extends RefCounted
-## ECHO — original design: compact teal gunner with a purple core, a round
-## helmet with twin swept antennae and gold goggles pushed up on the brow, big
-## violet eyes, twin pistols. The
+## ECHO — original design: compact teal gunner with a purple core, spiky violet
+## hair with gold goggles pushed up over it, a teal ear headset, big violet eyes,
+## twin pistols. The
 ## aiming arm + pistol is its own sprite (16 angles); the small crawler form
 ## used by the copy ability is a separate 2-frame sprite.
 
@@ -23,27 +23,30 @@ const GUN := Color("3a4466")
 
 const ANGLES := 16
 
-## Hand-drawn head (32-bit style), facing right; anchor = head centre (7, 6).
-##   1-5 teal armour  q s purple  v w x gold goggles  f g h face  e i o eye  k suit
+## Hand-drawn head (X6-era 3/4 view), facing right; anchor (8, 10) at the head joint.
+## Spiky violet hair swept back with gold goggles pushed up on top, bangs that dip
+## in a V over the brow so the violet eyes scowl, teal ear headset (purple centre).
+##   a b c hair  1-5 teal  q s purple  v w gold  f g h face  e i o eye  k suit
 const HEAD := [
-	".....234445....",
-	"...1234444455..",
-	"..123444444455.",
-	".12334444444455",
-	".1233vwwwwwwwwx",
-	"11223vvvvvvvvv.",
-	"11222q22geegeh.",
-	"1122qs22goigih.",
-	"11222q22giigig.",
-	"11122222fgggg..",
-	".11122kkffgg...",
-	"..1111kkff.....",
+	"...a....a.......",
+	"..aba..vwwvvwwv.",
+	".abba.awqswwqsw.",
+	".abbbbbvwwvvwwv.",
+	"abbbbbbbbbbccbba",
+	"abbbbbbfbbbbbbg.",
+	"ab12332feebabeg.",
+	"ab2qsq3fioegeig.",
+	"ab2qqq3fiigggih.",
+	".a12332fgggghfg.",
+	"..ab..kfggggggf.",
+	"...a..kfggffgf..",
+	"........fgggf...",
 ]
 const HEAD_PAL := {"1": Color("1e6650"), "2": Color("2f8e78"), "3": Color("4fcf98"), "4": Color("82e6b8"),
 		"5": Color("c8fbe2"), "q": Color("b78af3"), "s": Color("e2d0ff"), "v": Color("a3681a"),
 		"w": Color("f0b84a"), "x": Color("fff3c4"), "f": Color("c98a6a"), "g": Color("f0bd94"),
 		"h": Color("ffdcc0"), "e": Color("1a1030"), "i": Color("a070f0"), "o": Color("ffffff"),
-		"k": Color("2b3a5e")}
+		"k": Color("2b3a5e"), "a": Color("2a1d4f"), "b": Color("4a3384"), "c": Color("7d62c4")}
 
 var _r: Raster
 var _far := false
@@ -86,12 +89,7 @@ func draw(r: Raster, j: Dictionary, layer: String, _variant: String) -> void:
 
 func _head(j: Dictionary, s: float) -> void:
 	var c: Vector2 = j.head + Vector2(0, -0.5)
-	var a: float = j.head_angle * 0.6
-	# Twin antennae swept back.
-	_r.limb(c + Vector2(-1.5, -5.0).rotated(a) * s, c + Vector2(-10.0, -9.0).rotated(a) * s, 1.6, 1.0, ramp(ACCENT))
-	_r.limb(c + Vector2(0.8, -5.6).rotated(a) * s, c + Vector2(-7.0, -11.5).rotated(a) * s, 1.6, 1.0, ramp(ACCENT))
-	# Hand-drawn round helmet with a wide gold visor and purple ear pieces.
-	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(7, 6), {"line": ARMOR.darkened(0.6)})
+	_r.stamp(HEAD, HEAD_PAL, c.round(), Vector2i(8, 10), {"line": ARMOR.darkened(0.6)})
 
 
 func _body(j: Dictionary, s: float) -> void:
